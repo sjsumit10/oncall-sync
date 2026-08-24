@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push: {branches: [main]}
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env: {POSTGRES_USER: oncall, POSTGRES_PASSWORD: oncall, POSTGRES_DB: oncall_test}
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U oncall" --health-interval 5s --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+    env:
+      ENVIRONMENT: test
+      DATABASE_URL: postgresql+asyncpg://oncall_app:oncall_app@localhost:5432/oncall_test
+      DATABASE_ADMIN_URL: postgresql+asyncpg://oncall:oncall@localhost:5432/oncall_test
+      REDIS_URL: redis://localhost:6379/0
+      CREDENTIAL_KEK: ZmFrZS1rZWstZm9yLWNpLXRlc3RzLW9ubHktMzJieXRl
+    defaults:
+      run: {working-directory: backend}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: pip install -e '.[dev]'
+      - run: ruff check .
+      - run: ruff format --check .
+      - run: mypy app
+      - run: pytest
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run: {working-directory: frontend}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: "22", cache: npm, cache-dependency-path: frontend/package-lock.json}
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run test
+      - run: npm run build

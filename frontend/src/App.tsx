@@ -1,0 +1,37 @@
+import { Route, Routes } from "react-router-dom";
+
+import { AppLayout } from "@/components/AppLayout";
+import { RequireAuth } from "@/components/RequireAuth";
+import AcceptInvite from "@/routes/AcceptInvite";
+import Connections from "@/routes/Connections";
+import Identities from "@/routes/Identities";
+import Login from "@/routes/Login";
+import Overview from "@/routes/Overview";
+import RuleBuilder from "@/routes/RuleBuilder";
+import Rules from "@/routes/Rules";
+import Settings from "@/routes/Settings";
+import Signup from "@/routes/Signup";
+
+export default function App() {
+  return (
+    <Routes>
+      <Route path="/login" element={<Login />} />
+      <Route path="/signup" element={<Signup />} />
+      <Route path="/invite/:token" element={<AcceptInvite />} />
+      <Route
+        element={
+          <RequireAuth>
+            <AppLayout />
+          </RequireAuth>
+        }
+      >
+        <Route path="/" element={<Overview />} />
+        <Route path="/connections" element={<Connections />} />
+        <Route path="/rules" element={<Rules />} />
+        <Route path="/rules/new" element={<RuleBuilder />} />
+        <Route path="/identities" element={<Identities />} />
+        <Route path="/settings" element={<Settings />} />
+      </Route>
+    </Routes>
+  );
+}

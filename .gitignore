@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+.venv/
+.env
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+node_modules/
+dist/
+frontend/src/lib/api-schema.d.ts
+.DS_Store
+*.tsbuildinfo
