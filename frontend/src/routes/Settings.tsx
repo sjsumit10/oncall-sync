@@ -1,22 +1,88 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Mail, Trash2, UserPlus } from "lucide-react";
 import { useState } from "react";
 
-import { Alert, Button, Card, Field, RoleBadge } from "@/components/ui";
+import { Field } from "@/components/field";
+import { PageHeader } from "@/components/page";
+import { Alert } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { api } from "@/lib/api";
 import { useSession } from "@/lib/auth";
-import type { Invite, InviteCreated, User, UserRole } from "@/lib/types";
+import type { Invite, InviteCreated, Organization, Session, User, UserRole } from "@/lib/types";
 import { errorMessage } from "./Login";
 
 export default function Settings() {
   const { data: session } = useSession();
-  const canManage = session?.user.role === "owner" || session?.user.role === "admin";
+  const isOwner = session?.user.role === "owner";
+  const canManage = isOwner || session?.user.role === "admin";
 
   return (
-    <div className="space-y-6">
-      <h1 className="text-xl font-semibold text-slate-900">Settings</h1>
+    <div className="space-y-8">
+      <PageHeader title="Settings" description="Manage your organization, members and invites." />
+      {isOwner && session && <OrganizationSettings organization={session.organization} />}
       <Members canManage={canManage} currentUserId={session?.user.id} />
-      {canManage && <Invites isOwner={session?.user.role === "owner"} />}
+      {canManage && <Invites isOwner={isOwner} />}
     </div>
+  );
+}
+
+function OrganizationSettings({ organization }: { organization: Organization }) {
+  const queryClient = useQueryClient();
+  const [name, setName] = useState(organization.name);
+
+  const update = useMutation({
+    mutationFn: () => api.patch<Organization>("/org", { name }),
+    onSuccess: (org) => {
+      queryClient.setQueryData<Session | null>(["session"], (session) =>
+        session ? { ...session, organization: org } : session,
+      );
+    },
+  });
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Organization</CardTitle>
+        <CardDescription>The name your team sees across On-Call Sync.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <form
+          className="flex flex-wrap items-end gap-3"
+          onSubmit={(event) => {
+            event.preventDefault();
+            update.mutate();
+          }}
+        >
+          <div className="min-w-56 flex-1">
+            <Field
+              label="Organization name"
+              required
+              minLength={2}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
+          </div>
+          <Button type="submit" disabled={update.isPending || name.trim() === organization.name}>
+            Save
+          </Button>
+        </form>
+        {update.error && (
+          <div className="mt-3">
+            <Alert>{errorMessage(update.error)}</Alert>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -33,29 +99,44 @@ function Members({ canManage, currentUserId }: { canManage: boolean; currentUser
   });
 
   return (
-    <Card title="Members">
-      {remove.error && <Alert>{errorMessage(remove.error)}</Alert>}
-      <ul className="divide-y divide-slate-100">
-        {members.data?.map((member) => (
-          <li key={member.id} className="flex items-center gap-3 py-3">
-            <div className="min-w-0">
-              <p className="truncate text-sm font-medium text-slate-900">{member.name}</p>
-              <p className="truncate text-sm text-slate-500">{member.email}</p>
-            </div>
-            <RoleBadge role={member.role} />
-            {canManage && member.id !== currentUserId && (
-              <Button
-                variant="danger"
-                className="ml-auto"
-                disabled={remove.isPending}
-                onClick={() => remove.mutate(member.id)}
-              >
-                Remove
-              </Button>
-            )}
-          </li>
-        ))}
-      </ul>
+    <Card>
+      <CardHeader>
+        <CardTitle>Members</CardTitle>
+        <CardDescription>Everyone with access to this organization.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        {remove.error && (
+          <div className="mb-3">
+            <Alert>{errorMessage(remove.error)}</Alert>
+          </div>
+        )}
+        <ul className="divide-y divide-border">
+          {members.data?.map((member) => (
+            <li key={member.id} className="flex items-center gap-3 py-3">
+              <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
+                {member.name.trim().charAt(0).toUpperCase()}
+              </div>
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium text-foreground">{member.name}</p>
+                <p className="truncate text-sm text-muted-foreground">{member.email}</p>
+              </div>
+              <RoleBadge role={member.role} className="ml-auto" />
+              {canManage && member.id !== currentUserId && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="text-muted-foreground hover:text-destructive"
+                  disabled={remove.isPending}
+                  onClick={() => remove.mutate(member.id)}
+                  aria-label={`Remove ${member.name}`}
+                >
+                  <Trash2 className="size-4" />
+                </Button>
+              )}
+            </li>
+          ))}
+        </ul>
+      </CardContent>
     </Card>
   );
 }
@@ -87,71 +168,94 @@ function Invites({ isOwner }: { isOwner: boolean }) {
   });
 
   return (
-    <Card title="Pending invites">
-      <form
-        className="flex flex-wrap items-end gap-3"
-        onSubmit={(event) => {
-          event.preventDefault();
-          create.mutate();
-        }}
-      >
-        <div className="min-w-56 flex-1">
-          <Field
-            label="Email"
-            type="email"
-            required
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-          />
-        </div>
-        <label className="block">
-          <span className="mb-1 block text-sm font-medium text-slate-700">Role</span>
-          <select
-            className="rounded-md border border-slate-300 px-3 py-2 text-sm"
-            value={role}
-            onChange={(e) => setRole(e.target.value as UserRole)}
-          >
-            <option value="member">Member</option>
-            {isOwner && <option value="admin">Admin</option>}
-          </select>
-        </label>
-        <Button type="submit" disabled={create.isPending}>
-          Invite
-        </Button>
-      </form>
+    <Card>
+      <CardHeader>
+        <CardTitle>Pending invites</CardTitle>
+        <CardDescription>Invite teammates by email — they'll get a one-time link.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <form
+          className="flex flex-wrap items-end gap-3"
+          onSubmit={(event) => {
+            event.preventDefault();
+            create.mutate();
+          }}
+        >
+          <div className="min-w-56 flex-1">
+            <Field
+              label="Email"
+              type="email"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
+          </div>
+          <div className="w-36 space-y-1.5">
+            <Label>Role</Label>
+            <Select value={role} onValueChange={(value) => setRole(value as UserRole)}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="member">Member</SelectItem>
+                {isOwner && <SelectItem value="admin">Admin</SelectItem>}
+              </SelectContent>
+            </Select>
+          </div>
+          <Button type="submit" disabled={create.isPending}>
+            <UserPlus className="size-4" />
+            Invite
+          </Button>
+        </form>
 
-      {create.error && (
-        <div className="mt-3">
-          <Alert>{errorMessage(create.error)}</Alert>
-        </div>
-      )}
-      {lastLink && (
-        <p className="mt-3 break-all rounded-md bg-slate-50 px-3 py-2 text-sm text-slate-600">
-          Share this link — it is shown only once:{" "}
-          <span className="font-mono text-slate-900">{lastLink}</span>
-        </p>
-      )}
-
-      <ul className="mt-4 divide-y divide-slate-100">
-        {invites.data?.length === 0 && <li className="py-3 text-sm text-slate-500">None.</li>}
-        {invites.data?.map((invite) => (
-          <li key={invite.id} className="flex items-center gap-3 py-3">
-            <span className="text-sm text-slate-900">{invite.email}</span>
-            <RoleBadge role={invite.role} />
-            <span className="text-sm text-slate-400">
-              expires {new Date(invite.expires_at).toLocaleDateString()}
+        {create.error && (
+          <div className="mt-3">
+            <Alert>{errorMessage(create.error)}</Alert>
+          </div>
+        )}
+        {lastLink && (
+          <p className="mt-3 flex items-start gap-2 break-all rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground">
+            <Mail className="mt-0.5 size-4 shrink-0" />
+            <span>
+              Share this link — it is shown only once:{" "}
+              <span className="font-mono text-foreground">{lastLink}</span>
             </span>
-            <Button
-              variant="danger"
-              className="ml-auto"
-              disabled={revoke.isPending}
-              onClick={() => revoke.mutate(invite.id)}
-            >
-              Revoke
-            </Button>
-          </li>
-        ))}
-      </ul>
+          </p>
+        )}
+
+        <ul className="mt-4 divide-y divide-border">
+          {invites.data?.length === 0 && (
+            <li className="py-3 text-sm text-muted-foreground">None.</li>
+          )}
+          {invites.data?.map((invite) => (
+            <li key={invite.id} className="flex items-center gap-3 py-3">
+              <span className="text-sm text-foreground">{invite.email}</span>
+              <RoleBadge role={invite.role} />
+              <span className="text-sm text-muted-foreground">
+                expires {new Date(invite.expires_at).toLocaleDateString()}
+              </span>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="ml-auto text-muted-foreground hover:text-destructive"
+                disabled={revoke.isPending}
+                onClick={() => revoke.mutate(invite.id)}
+                aria-label={`Revoke invite for ${invite.email}`}
+              >
+                <Trash2 className="size-4" />
+              </Button>
+            </li>
+          ))}
+        </ul>
+      </CardContent>
     </Card>
+  );
+}
+
+function RoleBadge({ role, className }: { role: string; className?: string }) {
+  return (
+    <Badge variant={role === "owner" ? "default" : role === "admin" ? "secondary" : "outline"} className={className}>
+      {role}
+    </Badge>
   );
 }

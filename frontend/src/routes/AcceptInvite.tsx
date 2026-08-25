@@ -1,7 +1,9 @@
 import { useState } from "react";
 import { Navigate, useParams } from "react-router-dom";
 
-import { Alert, Button, Field } from "@/components/ui";
+import { Field } from "@/components/field";
+import { Alert } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
 import { useAcceptInvite, useSession } from "@/lib/auth";
 import { AuthShell, errorMessage } from "./Login";
 
@@ -16,7 +18,7 @@ export default function AcceptInvite() {
   if (session && accept.isSuccess) return <Navigate to="/" replace />;
 
   return (
-    <AuthShell title="Join the team">
+    <AuthShell title="Join the team" description="Set your name and a password to get started.">
       <form
         className="space-y-4"
         onSubmit={(event) => {
@@ -39,9 +41,9 @@ export default function AcceptInvite() {
           value={password}
           onChange={(e) => setPassword(e.target.value)}
         />
-        <p className="text-xs text-slate-500">At least 12 characters.</p>
+        <p className="text-xs text-muted-foreground">At least 12 characters.</p>
         {accept.error && <Alert>{errorMessage(accept.error)}</Alert>}
-        <Button type="submit" className="w-full" disabled={accept.isPending}>
+        <Button type="submit" className="w-full" size="lg" disabled={accept.isPending}>
           {accept.isPending ? "Joining…" : "Accept invite"}
         </Button>
       </form>

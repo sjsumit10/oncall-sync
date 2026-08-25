@@ -17,8 +17,8 @@ export function RequireAuth({ children }: { children: ReactNode }) {
 
 export function FullPageSpinner() {
   return (
-    <div className="flex min-h-screen items-center justify-center text-sm text-slate-500">
-      Loading…
+    <div className="flex min-h-screen items-center justify-center bg-background">
+      <div className="size-6 animate-spin rounded-full border-2 border-muted border-t-primary" />
     </div>
   );
 }

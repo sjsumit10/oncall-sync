@@ -1,8 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Eye, History, Pause, Play, Plug, Trash2, Workflow } from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 
-import { Alert, Button, Card } from "@/components/ui";
+import { EmptyState } from "@/components/page";
+import { Alert } from "@/components/ui/alert";
+import { Badge, type BadgeProps } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { api } from "@/lib/api";
 import { useSession } from "@/lib/auth";
 import { useConnections, useGroups, useSchedules } from "@/lib/connections";
@@ -18,11 +23,11 @@ const STATUS_LABEL: Record<string, string> = {
   failing: "Failing",
 };
 
-const STATUS_STYLE: Record<string, string> = {
-  pending: "bg-slate-100 text-slate-600",
-  healthy: "bg-emerald-50 text-emerald-700",
-  degraded: "bg-amber-50 text-amber-800",
-  failing: "bg-red-50 text-red-700",
+const STATUS_VARIANT: Record<string, BadgeProps["variant"]> = {
+  pending: "secondary",
+  healthy: "success",
+  degraded: "warning",
+  failing: "destructive",
 };
 
 export default function Rules() {
@@ -39,38 +44,41 @@ export default function Rules() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center">
-        <h1 className="text-xl font-semibold text-slate-900">Sync rules</h1>
+      <div className="flex items-center justify-between gap-4">
+        <h1 className="text-2xl font-semibold tracking-tight text-foreground">Sync rules</h1>
         {canManage && ready && (
-          <Link className="ml-auto" to="/rules/new">
-            <Button>New rule</Button>
-          </Link>
+          <Button asChild>
+            <Link to="/rules/new">New rule</Link>
+          </Button>
         )}
       </div>
 
       {!isPending && !ready && (
-        <Card>
-          <p className="text-sm text-slate-600">
-            Connect an on-call provider and install a chat workspace first.
-          </p>
-          <Link to="/connections" className="mt-3 inline-block text-sm underline">
-            Go to connections
-          </Link>
-        </Card>
+        <EmptyState
+          icon={Plug}
+          title="Connect your tools first"
+          description="Connect an on-call provider and install a chat workspace, then come back to build a rule."
+          action={
+            <Button asChild size="sm" className="mt-1">
+              <Link to="/connections">Go to connections</Link>
+            </Button>
+          }
+        />
       )}
 
       {rules.data?.length === 0 && ready && (
-        <Card>
-          <p className="text-sm text-slate-600">
-            No rules yet. Map a schedule to a group handle so mentioning it always reaches
-            whoever is on call.
-          </p>
-        </Card>
+        <EmptyState
+          icon={Workflow}
+          title="No rules yet"
+          description="Map a schedule to a group handle so mentioning it always reaches whoever is on call."
+        />
       )}
 
-      {rules.data?.map((rule) => (
-        <RuleCard key={rule.id} rule={rule} canManage={canManage} />
-      ))}
+      <div className="space-y-4">
+        {rules.data?.map((rule) => (
+          <RuleCard key={rule.id} rule={rule} canManage={canManage} />
+        ))}
+      </div>
     </div>
   );
 }
@@ -112,65 +120,85 @@ function RuleCard({ rule, canManage }: { rule: SyncRule; canManage: boolean }) {
   });
 
   return (
-    <Card title={rule.name}>
-      <div className="flex flex-wrap items-center gap-3">
-        <code className="text-sm text-slate-900">@{handle}</code>
-        <span className="text-sm text-slate-500">← {scheduleName}</span>
-        <span
-          className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-            STATUS_STYLE[rule.status] ?? "bg-slate-100 text-slate-600"
-          }`}
-        >
-          {STATUS_LABEL[rule.status] ?? rule.status}
-        </span>
-        {!rule.enabled && (
-          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
-            Paused
-          </span>
+    <Card>
+      <CardHeader className="pb-4">
+        <CardTitle>{rule.name}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="flex flex-wrap items-center gap-3">
+          <code className="text-sm font-medium text-foreground">@{handle}</code>
+          <span className="text-sm text-muted-foreground">← {scheduleName}</span>
+          <Badge variant={STATUS_VARIANT[rule.status] ?? "secondary"} dot>
+            {STATUS_LABEL[rule.status] ?? rule.status}
+          </Badge>
+          {!rule.enabled && <Badge variant="secondary">Paused</Badge>}
+          <div className="ml-auto flex flex-wrap gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => runPreview.mutate()}
+              disabled={runPreview.isPending}
+            >
+              <Eye className="size-4" />
+              {runPreview.isPending ? "Checking…" : "Preview"}
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setShowRuns((open) => !open)}>
+              <History className="size-4" />
+              {showRuns ? "Hide runs" : "Runs"}
+            </Button>
+            {canManage && (
+              <>
+                <Button onClick={() => syncNow.mutate()} size="sm" disabled={syncNow.isPending}>
+                  {syncNow.isPending ? "Syncing…" : "Sync now"}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => toggle.mutate()}
+                  disabled={toggle.isPending}
+                >
+                  {rule.enabled ? <Pause className="size-4" /> : <Play className="size-4" />}
+                  {rule.enabled ? "Pause" : "Resume"}
+                </Button>
+                <Button
+                  variant="destructive-outline"
+                  size="sm"
+                  onClick={() => remove.mutate()}
+                  disabled={remove.isPending}
+                >
+                  <Trash2 className="size-4" />
+                  Delete
+                </Button>
+              </>
+            )}
+          </div>
+        </div>
+
+        <p className="mt-2 text-xs text-muted-foreground">
+          Escalation level{rule.escalation_levels.length > 1 ? "s" : ""}{" "}
+          {rule.escalation_levels.join(", ")}
+          {rule.notify_on_change ? " · announces handoffs" : " · quiet mode"}
+          {rule.last_synced_at && ` · synced ${new Date(rule.last_synced_at).toLocaleString()}`}
+        </p>
+
+        {rule.last_error && (
+          <div className="mt-3">
+            <Alert>{rule.last_error}</Alert>
+          </div>
         )}
-        <div className="ml-auto flex gap-2">
-          <Button variant="ghost" onClick={() => runPreview.mutate()} disabled={runPreview.isPending}>
-            {runPreview.isPending ? "Checking…" : "Preview"}
-          </Button>
-          <Button variant="ghost" onClick={() => setShowRuns((open) => !open)}>
-            {showRuns ? "Hide runs" : "Runs"}
-          </Button>
-          {canManage && (
-            <>
-              <Button onClick={() => syncNow.mutate()} disabled={syncNow.isPending}>
-                {syncNow.isPending ? "Syncing…" : "Sync now"}
-              </Button>
-              <Button variant="ghost" onClick={() => toggle.mutate()} disabled={toggle.isPending}>
-                {rule.enabled ? "Pause" : "Resume"}
-              </Button>
-              <Button variant="danger" onClick={() => remove.mutate()} disabled={remove.isPending}>
-                Delete
-              </Button>
-            </>
-          )}
-        </div>
-      </div>
-
-      <p className="mt-2 text-xs text-slate-500">
-        Escalation level{rule.escalation_levels.length > 1 ? "s" : ""}{" "}
-        {rule.escalation_levels.join(", ")}
-        {rule.notify_on_change ? " · announces handoffs" : " · quiet mode"}
-        {rule.last_synced_at && ` · synced ${new Date(rule.last_synced_at).toLocaleString()}`}
-      </p>
-
-      {rule.last_error && <div className="mt-3"><Alert>{rule.last_error}</Alert></div>}
-      {runPreview.error && (
-        <div className="mt-3">
-          <Alert>{errorMessage(runPreview.error)}</Alert>
-        </div>
-      )}
-      {syncNow.error && (
-        <div className="mt-3">
-          <Alert>{errorMessage(syncNow.error)}</Alert>
-        </div>
-      )}
-      {preview && <RulePreviewPanel preview={preview} />}
-      {showRuns && <RunHistory ruleId={rule.id} />}
+        {runPreview.error && (
+          <div className="mt-3">
+            <Alert>{errorMessage(runPreview.error)}</Alert>
+          </div>
+        )}
+        {syncNow.error && (
+          <div className="mt-3">
+            <Alert>{errorMessage(syncNow.error)}</Alert>
+          </div>
+        )}
+        {preview && <RulePreviewPanel preview={preview} />}
+        {showRuns && <RunHistory ruleId={rule.id} />}
+      </CardContent>
     </Card>
   );
 }

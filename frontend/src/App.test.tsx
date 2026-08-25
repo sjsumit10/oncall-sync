@@ -30,7 +30,7 @@ describe("routing", () => {
     stubSession(401, { detail: "Not authenticated" });
     renderAt("/");
 
-    expect(await screen.findByRole("heading", { name: "Sign in" })).toBeDefined();
+    expect(await screen.findByRole("heading", { name: "Welcome back" })).toBeDefined();
   });
 
   it("renders the app shell for an authenticated visitor", async () => {
@@ -56,6 +56,6 @@ describe("routing", () => {
     stubSession(401, { detail: "Not authenticated" });
     renderAt("/signup");
 
-    expect(await screen.findByRole("heading", { name: "Create your organization" })).toBeDefined();
+    expect(await screen.findByRole("heading", { name: "Create your account" })).toBeDefined();
   });
 });

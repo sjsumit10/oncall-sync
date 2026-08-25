@@ -1,7 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { CheckCircle2, Link2, Unlink } from "lucide-react";
 import { useEffect, useState } from "react";
 
-import { Alert, Button, Card } from "@/components/ui";
+import { EmptyState, PageHeader } from "@/components/page";
+import { Alert } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { api } from "@/lib/api";
 import { useSession } from "@/lib/auth";
 import { useConnections } from "@/lib/connections";
@@ -33,52 +41,51 @@ export default function Identities() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-xl font-semibold text-slate-900">Identities</h1>
-
-      <Card>
-        <p className="text-sm text-slate-600">
-          People are matched to chat accounts by email address. Anyone whose addresses differ —
-          contractors, aliases, SSO variance — needs linking by hand, or they will be skipped at
-          handoff.
-        </p>
-      </Card>
+      <PageHeader
+        title="Identities"
+        description="People are matched to chat accounts by email address. Anyone whose addresses differ — contractors, aliases, SSO variance — needs linking by hand, or they will be skipped at handoff."
+      />
 
       {oncall.length === 0 || chat.length === 0 ? (
-        <Card>
-          <p className="text-sm text-slate-600">
-            Connect an on-call provider and a chat workspace first.
-          </p>
-        </Card>
+        <EmptyState
+          icon={Link2}
+          title="Connect your tools first"
+          description="Connect an on-call provider and a chat workspace to see your directory."
+        />
       ) : (
         <Card>
-          <label className="mb-4 flex items-center gap-2 text-sm text-slate-700">
-            <input
-              type="checkbox"
-              checked={unmappedOnly}
-              onChange={(event) => setUnmappedOnly(event.target.checked)}
-            />
-            Show only people without a link
-          </label>
-
-          {directory.isPending && <p className="text-sm text-slate-500">Loading directory…</p>}
-          {directory.error && <Alert>{errorMessage(directory.error)}</Alert>}
-          {directory.data?.length === 0 && (
-            <p className="text-sm text-emerald-700">
-              {unmappedOnly ? "Everyone is linked." : "Nobody in the directory."}
-            </p>
-          )}
-
-          <ul className="divide-y divide-slate-100">
-            {directory.data?.map((entry) => (
-              <Row
-                key={entry.provider_user.external_id}
-                entry={entry}
-                canManage={canManage}
-                oncallId={oncallId}
-                chatId={chatId}
+          <CardContent className="pt-6">
+            <label className="mb-4 flex items-center gap-2 text-sm text-foreground">
+              <Checkbox
+                checked={unmappedOnly}
+                onCheckedChange={(checked) => setUnmappedOnly(checked === true)}
               />
-            ))}
-          </ul>
+              Show only people without a link
+            </label>
+
+            {directory.isPending && (
+              <p className="text-sm text-muted-foreground">Loading directory…</p>
+            )}
+            {directory.error && <Alert>{errorMessage(directory.error)}</Alert>}
+            {directory.data?.length === 0 && (
+              <p className="flex items-center gap-2 text-sm text-success">
+                <CheckCircle2 className="size-4" />
+                {unmappedOnly ? "Everyone is linked." : "Nobody in the directory."}
+              </p>
+            )}
+
+            <ul className="divide-y divide-border">
+              {directory.data?.map((entry) => (
+                <Row
+                  key={entry.provider_user.external_id}
+                  entry={entry}
+                  canManage={canManage}
+                  oncallId={oncallId}
+                  chatId={chatId}
+                />
+              ))}
+            </ul>
+          </CardContent>
         </Card>
       )}
     </div>
@@ -122,29 +129,31 @@ function Row({
     <li className="py-3">
       <div className="flex flex-wrap items-center gap-3">
         <div className="min-w-0">
-          <p className="truncate text-sm font-medium text-slate-900">
+          <p className="truncate text-sm font-medium text-foreground">
             {entry.provider_user.name}
           </p>
-          <p className="truncate text-sm text-slate-500">
+          <p className="truncate text-sm text-muted-foreground">
             {entry.provider_user.email ?? "no email on record"}
           </p>
         </div>
 
         {entry.link ? (
           <>
-            <span className="text-sm text-slate-600">
+            <span className="text-sm text-muted-foreground">
               → {entry.link.chat_user_name ?? entry.link.chat_user_id}
             </span>
-            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
+            <Badge variant="secondary">
               {entry.link.source === "manual" ? "manual" : "matched by email"}
-            </span>
+            </Badge>
             {canManage && (
               <Button
-                variant="danger"
-                className="ml-auto"
+                variant="ghost"
+                size="sm"
+                className="ml-auto text-muted-foreground hover:text-destructive"
                 onClick={() => unlink.mutate()}
                 disabled={unlink.isPending}
               >
+                <Unlink className="size-4" />
                 Unlink
               </Button>
             )}
@@ -158,14 +167,18 @@ function Row({
                 link.mutate();
               }}
             >
-              <input
-                className="rounded-md border border-slate-300 px-3 py-1.5 text-sm"
+              <Label htmlFor={`link-${entry.provider_user.external_id}`} className="sr-only">
+                Slack user ID
+              </Label>
+              <Input
+                id={`link-${entry.provider_user.external_id}`}
+                className="h-8 w-40"
                 placeholder="Slack user ID"
                 value={chatUserId}
                 onChange={(event) => setChatUserId(event.target.value)}
                 required
               />
-              <Button type="submit" disabled={link.isPending}>
+              <Button type="submit" size="sm" disabled={link.isPending}>
                 Link
               </Button>
             </form>

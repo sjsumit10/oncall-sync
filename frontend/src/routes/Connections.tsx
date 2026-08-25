@@ -1,8 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { CheckCircle2, KeyRound, RefreshCw, Unplug, Zap } from "lucide-react";
 import { useState } from "react";
 import { useSearchParams } from "react-router-dom";
 
-import { Alert, Button, Card, Field } from "@/components/ui";
+import { Field } from "@/components/field";
+import { SectionHeading } from "@/components/page";
+import { Alert } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { api } from "@/lib/api";
 import { useSession } from "@/lib/auth";
 import type {
@@ -34,11 +39,12 @@ export default function Connections() {
   const callbackError = params.get("error");
 
   return (
-    <div className="space-y-6">
-      <h1 className="text-xl font-semibold text-slate-900">Connections</h1>
+    <div className="space-y-8">
+      <h1 className="text-2xl font-semibold tracking-tight text-foreground">Connections</h1>
 
       {connected && (
-        <p className="rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+        <p className="flex items-center gap-2 rounded-md bg-success/10 px-3 py-2 text-sm text-success">
+          <CheckCircle2 className="size-4 shrink-0" />
           {connected} connected. <DismissLink onClick={() => setParams({})} />
         </p>
       )}
@@ -49,31 +55,32 @@ export default function Connections() {
         </Alert>
       )}
 
-      <SectionHeading
-        title="On-call provider"
-        hint="Where schedules come from."
-      />
-      {connections.data?.map((connection) => (
-        <ConnectionCard key={connection.id} connection={connection} canManage={canManage} />
-      ))}
-      {providers.data
-        ?.filter((provider) => !connections.data?.some((c) => c.kind === provider.kind))
-        .map((provider) => (
-          <ConnectCard key={provider.kind} provider={provider} canManage={canManage} />
+      <div className="space-y-4">
+        <SectionHeading title="On-call provider" hint="Where schedules come from." />
+        {connections.data?.map((connection) => (
+          <ConnectionCard key={connection.id} connection={connection} canManage={canManage} />
         ))}
+        {providers.data
+          ?.filter((provider) => !connections.data?.some((c) => c.kind === provider.kind))
+          .map((provider) => (
+            <ConnectCard key={provider.kind} provider={provider} canManage={canManage} />
+          ))}
+      </div>
 
-      <SectionHeading
-        title="Chat workspace"
-        hint="Where the group handle lives, and where handoffs are announced."
-      />
-      <ChatSection canManage={canManage} />
+      <div className="space-y-4">
+        <SectionHeading
+          title="Chat workspace"
+          hint="Where the group handle lives, and where handoffs are announced."
+        />
+        <ChatSection canManage={canManage} />
+      </div>
     </div>
   );
 }
 
 function DismissLink({ onClick }: { onClick: () => void }) {
   return (
-    <button className="underline" onClick={onClick}>
+    <button className="font-medium underline underline-offset-4" onClick={onClick}>
       Dismiss
     </button>
   );
@@ -101,44 +108,56 @@ function ConnectionCard({
   });
 
   return (
-    <Card title={connection.display_name}>
-      <div className="flex flex-wrap items-center gap-3">
-        <StatusBadge status={connection.status} />
-        <span className="text-sm text-slate-500">
-          {connection.auth_mode === "oauth" ? "OAuth" : "API key"}
-          {connection.last_verified_at &&
-            ` · verified ${new Date(connection.last_verified_at).toLocaleString()}`}
-        </span>
-        <div className="ml-auto flex gap-2">
-          <Button variant="ghost" onClick={() => setShowSchedules((open) => !open)}>
-            {showSchedules ? "Hide schedules" : "Schedules"}
-          </Button>
-          {canManage && (
-            <>
-              <Button variant="ghost" onClick={() => verify.mutate()} disabled={verify.isPending}>
-                {verify.isPending ? "Checking…" : "Test"}
-              </Button>
-              <Button
-                variant="danger"
-                onClick={() => disconnect.mutate()}
-                disabled={disconnect.isPending}
-              >
-                Disconnect
-              </Button>
-            </>
-          )}
+    <Card>
+      <CardHeader className="pb-4">
+        <CardTitle>{connection.display_name}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="flex flex-wrap items-center gap-3">
+          <StatusBadge status={connection.status} />
+          <span className="text-sm text-muted-foreground">
+            {connection.auth_mode === "oauth" ? "OAuth" : "API key"}
+            {connection.last_verified_at &&
+              ` · verified ${new Date(connection.last_verified_at).toLocaleString()}`}
+          </span>
+          <div className="ml-auto flex gap-2">
+            <Button variant="outline" size="sm" onClick={() => setShowSchedules((open) => !open)}>
+              {showSchedules ? "Hide schedules" : "Schedules"}
+            </Button>
+            {canManage && (
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => verify.mutate()}
+                  disabled={verify.isPending}
+                >
+                  {verify.isPending ? "Checking…" : "Test"}
+                </Button>
+                <Button
+                  variant="destructive-outline"
+                  size="sm"
+                  onClick={() => disconnect.mutate()}
+                  disabled={disconnect.isPending}
+                >
+                  <Unplug className="size-4" />
+                  Disconnect
+                </Button>
+              </>
+            )}
+          </div>
         </div>
-      </div>
 
-      {connection.last_error && (
-        <p className="mt-3 text-sm text-red-600">{connection.last_error}</p>
-      )}
-      {verify.data && (
-        <p className={`mt-3 text-sm ${verify.data.ok ? "text-emerald-700" : "text-red-600"}`}>
-          {verify.data.detail}
-        </p>
-      )}
-      {showSchedules && <Schedules connectionId={connection.id} />}
+        {connection.last_error && (
+          <p className="mt-3 text-sm text-destructive">{connection.last_error}</p>
+        )}
+        {verify.data && (
+          <p className={`mt-3 text-sm ${verify.data.ok ? "text-success" : "text-destructive"}`}>
+            {verify.data.detail}
+          </p>
+        )}
+        {showSchedules && <Schedules connectionId={connection.id} />}
+      </CardContent>
     </Card>
   );
 }
@@ -158,30 +177,32 @@ function Schedules({ connectionId }: { connectionId: string }) {
   });
 
   return (
-    <div className="mt-4 border-t border-slate-100 pt-4">
+    <div className="mt-4 border-t border-border pt-4">
       <div className="mb-2 flex items-center gap-3">
-        <span className="text-sm font-medium text-slate-700">
+        <span className="text-sm font-medium text-foreground">
           Schedules {schedules.data && `(${schedules.data.length})`}
         </span>
         <Button
           variant="ghost"
+          size="sm"
           className="ml-auto"
           onClick={() => refresh.mutate()}
           disabled={refresh.isPending}
         >
+          <RefreshCw className={`size-3.5 ${refresh.isPending ? "animate-spin" : ""}`} />
           {refresh.isPending ? "Refreshing…" : "Refresh"}
         </Button>
       </div>
-      {schedules.isPending && <p className="text-sm text-slate-500">Loading…</p>}
+      {schedules.isPending && <p className="text-sm text-muted-foreground">Loading…</p>}
       {schedules.data?.length === 0 && (
-        <p className="text-sm text-slate-500">No schedules found in this account.</p>
+        <p className="text-sm text-muted-foreground">No schedules found in this account.</p>
       )}
-      <ul className="divide-y divide-slate-100">
+      <ul className="divide-y divide-border">
         {schedules.data?.map((schedule) => (
           <li key={schedule.id} className="flex items-center gap-3 py-2">
-            <span className="text-sm text-slate-900">{schedule.name}</span>
-            <span className="text-xs text-slate-400">{schedule.timezone}</span>
-            <code className="ml-auto text-xs text-slate-400">{schedule.external_id}</code>
+            <span className="text-sm text-foreground">{schedule.name}</span>
+            <span className="text-xs text-muted-foreground">{schedule.timezone}</span>
+            <code className="ml-auto text-xs text-muted-foreground">{schedule.external_id}</code>
           </li>
         ))}
       </ul>
@@ -222,75 +243,79 @@ function ConnectCard({
 
   if (!canManage) {
     return (
-      <Card title={`Connect ${provider.display_name}`}>
-        <p className="text-sm text-slate-500">Ask an admin or owner to connect this provider.</p>
+      <Card className="border-dashed">
+        <CardHeader className="pb-4">
+          <CardTitle>Connect {provider.display_name}</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-muted-foreground">
+            Ask an admin or owner to connect this provider.
+          </p>
+        </CardContent>
       </Card>
     );
   }
 
   return (
-    <Card title={`Connect ${provider.display_name}`}>
-      {provider.supports_oauth && provider.oauth_configured && (
-        <div className="mb-4">
-          <Button onClick={() => startOauth.mutate()} disabled={startOauth.isPending}>
-            Connect with {provider.display_name}
-          </Button>
-          {startOauth.error && (
-            <div className="mt-2">
-              <Alert>{errorMessage(startOauth.error)}</Alert>
-            </div>
-          )}
-        </div>
-      )}
-
-      {provider.auth_modes.includes("api_key") && (
-        <form
-          className="flex flex-wrap items-end gap-3"
-          onSubmit={(event) => {
-            event.preventDefault();
-            connectKey.mutate();
-          }}
-        >
-          <div className="min-w-64 flex-1">
-            <Field
-              label={
-                provider.oauth_configured
-                  ? "Or paste a read-only API key"
-                  : "Read-only API key"
-              }
-              type="password"
-              autoComplete="off"
-              required
-              minLength={8}
-              value={apiKey}
-              onChange={(event) => setApiKey(event.target.value)}
-            />
+    <Card className="border-dashed">
+      <CardHeader className="pb-4">
+        <CardTitle>Connect {provider.display_name}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        {provider.supports_oauth && provider.oauth_configured && (
+          <div className="mb-4">
+            <Button onClick={() => startOauth.mutate()} disabled={startOauth.isPending}>
+              <Zap className="size-4" />
+              Connect with {provider.display_name}
+            </Button>
+            {startOauth.error && (
+              <div className="mt-2">
+                <Alert>{errorMessage(startOauth.error)}</Alert>
+              </div>
+            )}
           </div>
-          <Button type="submit" disabled={connectKey.isPending}>
-            {connectKey.isPending ? "Verifying…" : "Connect"}
-          </Button>
-        </form>
-      )}
+        )}
 
-      <p className="mt-3 text-xs text-slate-500">
-        The key is verified against {provider.display_name} before it is stored, and is
-        encrypted at rest.
-      </p>
-      {connectKey.error && (
-        <div className="mt-3">
-          <Alert>{errorMessage(connectKey.error)}</Alert>
-        </div>
-      )}
+        {provider.auth_modes.includes("api_key") && (
+          <form
+            className="flex flex-wrap items-end gap-3"
+            onSubmit={(event) => {
+              event.preventDefault();
+              connectKey.mutate();
+            }}
+          >
+            <div className="min-w-64 flex-1">
+              <Field
+                label={
+                  provider.oauth_configured
+                    ? "Or paste a read-only API key"
+                    : "Read-only API key"
+                }
+                type="password"
+                autoComplete="off"
+                required
+                minLength={8}
+                value={apiKey}
+                onChange={(event) => setApiKey(event.target.value)}
+              />
+            </div>
+            <Button type="submit" variant="outline" disabled={connectKey.isPending}>
+              <KeyRound className="size-4" />
+              {connectKey.isPending ? "Verifying…" : "Connect"}
+            </Button>
+          </form>
+        )}
+
+        <p className="mt-3 text-xs text-muted-foreground">
+          The key is verified against {provider.display_name} before it is stored, and is
+          encrypted at rest.
+        </p>
+        {connectKey.error && (
+          <div className="mt-3">
+            <Alert>{errorMessage(connectKey.error)}</Alert>
+          </div>
+        )}
+      </CardContent>
     </Card>
-  );
-}
-
-
-function SectionHeading({ title, hint }: { title: string; hint: string }) {
-  return (
-    <div className="pt-2">
-      <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">{title}</h2>
-      <p className="text-sm text-slate-500">{hint}</p>
-    </div>
   );
 }

@@ -36,7 +36,6 @@ function useSessionMutation<TInput>(path: string) {
 }
 
 export interface SignupInput {
-  organization_name: string;
   name: string;
   email: string;
   password: string;
