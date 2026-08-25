@@ -8,7 +8,13 @@ export default defineConfig({
   server: {
     port: 5173,
     // Keeps cookies first-party in development so the session cookie works.
-    proxy: { "/api": { target: "http://localhost:8000", changeOrigin: true } },
+    // Override when the API runs somewhere else: VITE_API_PROXY=http://localhost:8001
+    proxy: {
+      "/api": {
+        target: process.env.VITE_API_PROXY ?? "http://localhost:8000",
+        changeOrigin: true,
+      },
+    },
   },
   test: { environment: "jsdom", globals: true },
 });

@@ -33,13 +33,97 @@ The quick version follows.
 
 ## Local development
 
+Either way, start with the environment file:
+
 ```bash
 cp .env.example .env
-python -c "import base64,os;print(base64.urlsafe_b64encode(os.urandom(32)).decode())"  # → CREDENTIAL_KEK
+python3 -c "import base64,os;print(base64.urlsafe_b64encode(os.urandom(32)).decode())"
+# paste that into CREDENTIAL_KEK= in .env
+```
+
+`CREDENTIAL_KEK` has no default. The stack starts happily without it and then
+refuses the first PagerDuty or Slack connection, so set it now rather than
+debugging it later. Keep it: it wraps every stored credential, and losing it
+means reconnecting every integration.
+
+There are two ways to run the stack. **Native is the better one for day-to-day
+work** — a debugger attaches to a normal local process, restarts are instant, and
+the traceback you get is the one your editor can jump into. Everything in docker
+is the closer match to production and the fewer moving parts to install.
+
+### Option A — Postgres and Redis in docker, app natively (recommended)
+
+Only the two stateful services run in containers; the API, the worker and the
+frontend run on the host.
+
+```bash
+make install     # backend/.venv + frontend/node_modules  (once)
+make db-up       # postgres + redis only
+make migrate-native
+```
+
+Then three terminals, one process each:
+
+```bash
+make api         # http://localhost:8000  — /health, /docs, /metrics
+make worker      # the reconciler; metrics on :9100
+make web         # http://localhost:5173
+```
+
+Open http://localhost:5173. Vite proxies `/api` to `localhost:8000`, which keeps
+the session cookie first-party — so use the Vite origin, not the API's.
+
+`make install` needs **Python 3.12+** and **Node 20+**; both `make api` and
+`make worker` reload on save, so leave them running.
+
+**The one thing that catches people.** `DATABASE_URL` and `REDIS_URL` in `.env`
+are ignored under docker compose (it substitutes container hostnames) but are
+exactly what the native processes use. If you changed `POSTGRES_PORT` or
+`REDIS_PORT` because something already had 5432 or 6379, change these to match:
+
+```bash
+POSTGRES_PORT=55432
+REDIS_PORT=56379
+DATABASE_URL=postgresql+asyncpg://oncall_app:oncall_app@localhost:55432/oncall
+DATABASE_ADMIN_URL=postgresql+asyncpg://oncall:oncall@localhost:55432/oncall
+REDIS_URL=redis://localhost:56379/0
+```
+
+A wrong port here surfaces as a connection refused at startup, which is at least
+loud. A wrong *role* does not — see the two roles below.
+
+Running the API somewhere other than `:8000`? Point the frontend at it with
+`VITE_API_PROXY=http://localhost:8001 make web`.
+
+### Option B — everything in docker
+
+```bash
 make up          # postgres, redis, api, worker
 make migrate     # bootstraps the app role, then applies migrations
-make web         # frontend at http://localhost:5173
+make web         # frontend still runs natively
 ```
+
+`make logs` tails the API and worker. The frontend has no container: Vite's dev
+server wants to be on the host either way.
+
+### Running the tests
+
+Tests always run natively, whichever option you chose, and need `backend/.venv`:
+
+```bash
+make test        # backend
+make lint        # ruff + mypy --strict
+cd frontend && npm test
+```
+
+The backend suite uses the containers, so `make db-up` (or `make up`) has to be
+running. It connects to a **separate `oncall_test` database** — it truncates every
+table between tests, which would be an unwelcome surprise against your
+development data — and to Redis db 15. Postgres creates that database on first
+boot; if your volume predates this, `make test-db` adds it.
+
+Ports come from `POSTGRES_PORT` / `REDIS_PORT` in `.env`, the same as everything
+else, so a remapped port needs no second edit.
 
 ### Two database roles
 
@@ -50,12 +134,9 @@ either would leave the tenant-isolation policies doing nothing. `make db-bootstr
 (run automatically by `make migrate`) creates the role and its grants from
 `DATABASE_URL`; `DATABASE_ADMIN_URL` is the owner and is used only for migrations.
 
-API at http://localhost:8000 — `/health`, `/docs`, `/metrics`.
-
 Slack OAuth and the events endpoint need a public URL: run `ngrok http 8000` and
 point the Slack app's redirect URI at `<ngrok-url>/api/v1/chat/slack/callback`.
-
-`make test` runs backend tests, `make lint` runs ruff + mypy.
+This is identical in both options — ngrok points at the host port either way.
 
 ## Status
 

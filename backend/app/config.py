@@ -8,7 +8,13 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    # There is one .env, at the repo root. Under compose it arrives as real
+    # environment variables; run natively the working directory is backend/, so
+    # the parent is searched too. Later files win, so a backend/.env can still
+    # override for a one-off.
+    model_config = SettingsConfigDict(
+        env_file=("../.env", ".env"), env_file_encoding="utf-8", extra="ignore"
+    )
 
     environment: Literal["local", "test", "staging", "production"] = "local"
     debug: bool = False

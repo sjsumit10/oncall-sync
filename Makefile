@@ -8,8 +8,15 @@ BIN := $(shell [ -x backend/.venv/bin/pytest ] && echo .venv/bin/ || echo "")
 help: ## List targets
 	@grep -hE '^[a-z-]+:.*?## ' $(MAKEFILE_LIST) | awk -F':.*?## ' '{printf "  %-14s %s\n", $$1, $$2}'
 
-up: ## Start postgres, redis, api and worker
+up: ## Start postgres, redis, api and worker in docker
 	$(COMPOSE) up -d --build
+
+db-up: ## Start only postgres and redis (for running the app natively)
+	$(COMPOSE) up -d postgres redis
+
+install: ## Create backend/.venv and install backend + frontend dependencies
+	cd backend && python3 -m venv .venv && .venv/bin/pip install -qe '.[dev]'
+	cd frontend && npm install
 
 down: ## Stop everything
 	$(COMPOSE) down
@@ -23,8 +30,23 @@ db-bootstrap: ## Create the least-privileged app role (run once, before migrate)
 migrate: db-bootstrap ## Bootstrap the app role and apply migrations
 	$(COMPOSE) run --rm api alembic upgrade head
 
+migrate-native: ## Bootstrap and migrate from the host venv (native workflow)
+	cd backend && $(BIN)python scripts/bootstrap_db.py && $(BIN)alembic upgrade head
+
+api: ## Run the API natively with reload
+	cd backend && $(BIN)uvicorn app.main:app --reload --port 8000
+
+worker: ## Run the ARQ worker natively
+	cd backend && $(BIN)arq app.worker.arq_app.WorkerSettings --watch app
+
 revision: ## Autogenerate a migration: make revision m="add sync_rules"
 	$(COMPOSE) run --rm api alembic revision --autogenerate -m "$(m)"
+
+test-db: ## Create the test database (only if your pg volume predates it)
+	@$(COMPOSE) exec -T postgres psql -U oncall -d postgres -tAc \
+		"SELECT 1 FROM pg_database WHERE datname = 'oncall_test'" | grep -q 1 \
+		|| $(COMPOSE) exec -T postgres createdb -U oncall oncall_test
+	@echo "oncall_test ready"
 
 test: ## Backend tests
 	cd backend && $(BIN)pytest
@@ -42,4 +64,5 @@ lint: ## Ruff + mypy
 web: ## Frontend dev server
 	cd frontend && npm run dev
 
-.PHONY: help up down logs db-bootstrap migrate revision test test-all audit lint web
+.PHONY: help up db-up install down logs db-bootstrap migrate migrate-native \
+	revision api worker test-db test test-all audit lint web

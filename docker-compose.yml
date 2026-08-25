@@ -6,7 +6,9 @@ services:
       POSTGRES_PASSWORD: oncall
       POSTGRES_DB: oncall
     ports: ["${POSTGRES_PORT:-5432}:5432"]
-    volumes: ["pgdata:/var/lib/postgresql/data"]
+    volumes:
+      - "pgdata:/var/lib/postgresql/data"
+      - "./scripts/init-test-db.sql:/docker-entrypoint-initdb.d/10-test-db.sql:ro"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U oncall"]
       interval: 5s
