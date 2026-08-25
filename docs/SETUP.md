@@ -110,6 +110,19 @@ Everything below derives from `APP_BASE_URL`:
 
 ## 4. Slack app
 
+This is **one app registration, installed by many workspaces** — not one app per
+customer. Every org that signs up hits the same `SLACK_CLIENT_ID` and goes through
+the same OAuth "Add to Slack" flow from its own Connections page; the callback
+(`/api/v1/chat/slack/callback`) resolves which org the install belongs to from the
+state token minted when that org clicked *Add to Slack*, not from anything
+Slack-specific. You register the app once, in your own Slack account.
+
+> **You do not need to submit this to the Slack App Directory.** The Directory is
+> only for organic discovery — being found by search *inside* Slack — and requires
+> Slack's own app-review process. A workspace admin can install your app the
+> moment it exists, from your own "Add to Slack" link, with zero review from
+> Slack. Skip the Directory unless you specifically want that discovery channel.
+
 ### Create it from a manifest
 
 Go to <https://api.slack.com/apps> → **Create New App** → **From an app manifest**,
