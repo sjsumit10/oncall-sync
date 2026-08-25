@@ -11,8 +11,10 @@ async def test_signup_creates_org_with_owner(client: AsyncClient) -> None:
 
     assert body["user"]["role"] == "owner"
     assert body["user"]["email"] == "owner@acme.dev"
-    assert body["organization"]["name"] == "Acme"
-    assert body["organization"]["slug"] == "acme"
+    # No org name is collected at signup — the org starts named after the
+    # owner's email and can be renamed later from Settings.
+    assert body["organization"]["name"] == "owner@acme.dev"
+    assert body["organization"]["slug"]
     assert client.cookies.get(SESSION_COOKIE)
 
     me = await client.get("/api/v1/auth/me")
@@ -25,7 +27,6 @@ async def test_signup_rejects_duplicate_email(client: AsyncClient) -> None:
     response = await client.post(
         "/api/v1/auth/signup",
         json={
-            "organization_name": "Other",
             "name": "Bob",
             "email": "OWNER@acme.dev",  # case-insensitive collision
             "password": "correct-horse-battery",
@@ -39,7 +40,6 @@ async def test_signup_rejects_short_password(client: AsyncClient) -> None:
     response = await client.post(
         "/api/v1/auth/signup",
         json={
-            "organization_name": "Acme",
             "name": "Ada",
             "email": "ada@acme.dev",
             "password": "short",

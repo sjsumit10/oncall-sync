@@ -115,6 +115,34 @@ async def test_last_owner_cannot_be_demoted(client: AsyncClient) -> None:
     assert (await client.get("/api/v1/auth/me")).json()["user"]["role"] == "owner"
 
 
+async def test_owner_can_rename_organization(client: AsyncClient) -> None:
+    owner = await signup(client)
+    assert owner["organization"]["name"] == "owner@acme.dev"
+
+    response = await client.patch(
+        "/api/v1/org", json={"name": "Acme Corp"}, headers=csrf(client)
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["name"] == "Acme Corp"
+    assert response.json()["slug"] == owner["organization"]["slug"]
+
+    assert (await client.get("/api/v1/org")).json()["name"] == "Acme Corp"
+
+
+async def test_member_cannot_rename_organization(client: AsyncClient, invitee: AsyncClient) -> None:
+    await signup(client)
+    created = await invite(client, "bob@acme.dev")
+    await invitee.post(
+        "/api/v1/auth/invites/accept",
+        json={"token": token_from(created), "name": "Bob", "password": "another-long-password"},
+    )
+
+    response = await invitee.patch(
+        "/api/v1/org", json={"name": "Hijacked"}, headers=csrf(invitee)
+    )
+    assert response.status_code == 403
+
+
 async def test_removing_a_member_revokes_their_session(
     client: AsyncClient, invitee: AsyncClient
 ) -> None:

@@ -195,8 +195,8 @@ async def test_refresh_prunes_schedules_deleted_upstream(client: AsyncClient) ->
 async def test_another_org_cannot_see_or_touch_a_connection(
     client: AsyncClient, invitee: AsyncClient
 ) -> None:
-    await signup(client, org="Acme", email="owner@acme.dev")
-    await signup(invitee, org="Globex", email="owner@globex.dev")
+    await signup(client, email="owner@acme.dev")
+    await signup(invitee, email="owner@globex.dev")
     mock_verify()
     connection = await connect_api_key(client)
 
@@ -214,8 +214,8 @@ async def test_another_org_cannot_see_or_touch_a_connection(
 async def test_rls_scopes_connections_even_without_the_repository_layer(
     client: AsyncClient, invitee: AsyncClient
 ) -> None:
-    acme = await signup(client, org="Acme", email="owner@acme.dev")
-    globex = await signup(invitee, org="Globex", email="owner@globex.dev")
+    acme = await signup(client, email="owner@acme.dev")
+    globex = await signup(invitee, email="owner@globex.dev")
     mock_verify()
     await connect_api_key(client)
     await connect_api_key(invitee, key="globex-key")

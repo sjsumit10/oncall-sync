@@ -346,7 +346,7 @@ async def test_removing_a_link_makes_the_rule_degraded_again(client: AsyncClient
 async def test_another_org_cannot_preview_a_rule(client: AsyncClient, invitee: AsyncClient) -> None:
     rule = await make_rule(client)
     respx.reset()
-    await connected_org(invitee, org="Globex", email="owner@globex.dev")
+    await connected_org(invitee, email="owner@globex.dev")
 
     response = await invitee.post(f"{RULES}/{rule['id']}/preview", headers=csrf(invitee))
     assert response.status_code == 404

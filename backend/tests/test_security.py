@@ -83,7 +83,6 @@ class TestCredentialExposure:
         response = await client.post(
             "/api/v1/auth/signup",
             json={
-                "organization_name": "Acme",
                 "name": "Ada",
                 "email": "ada@acme.dev",
                 "password": "correct-horse-battery",

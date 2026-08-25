@@ -3,7 +3,7 @@
 import uuid
 
 from fastapi import APIRouter, Depends, status
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 
 from app.api.v1.schemas import InviteCreatedOut, InviteOut, OrganizationOut, UserOut
 from app.config import get_settings
@@ -29,11 +29,27 @@ class RoleUpdateIn(BaseModel):
     role: UserRole
 
 
+class OrganizationUpdateIn(BaseModel):
+    name: str = Field(min_length=2, max_length=120)
+
+
 @router.get("", response_model=OrganizationOut)
 async def get_organization(user: CurrentUser, db: DbSession) -> Organization:
     org = await db.get(Organization, user.org_id)
     if org is None:
         raise NotFound("Organization not found")
+    return org
+
+
+@router.patch("", response_model=OrganizationOut)
+async def update_organization(
+    payload: OrganizationUpdateIn, db: DbSession, actor: User = RequireOwner
+) -> Organization:
+    org = await db.get(Organization, actor.org_id)
+    if org is None:
+        raise NotFound("Organization not found")
+    org = await accounts.rename_organization(db, org=org, name=payload.name)
+    await db.commit()
     return org
 
 

@@ -41,13 +41,16 @@ async def email_exists(db: AsyncSession, email: str) -> bool:
 
 
 async def create_organization_with_owner(
-    db: AsyncSession, *, org_name: str, name: str, email: str, password: str
+    db: AsyncSession, *, name: str, email: str, password: str
 ) -> tuple[Organization, User]:
     email = normalize_email(email)
     if await email_exists(db, email):
         raise Conflict("An account with that email already exists")
 
-    org = Organization(name=org_name.strip(), slug=await _unique_slug(db, org_name))
+    # No org name is collected at signup — the org starts named after its
+    # owner's email and can be renamed later from Settings.
+    org_name = email[:120]
+    org = Organization(name=org_name, slug=await _unique_slug(db, org_name))
     db.add(org)
     await db.flush()
 
@@ -61,6 +64,12 @@ async def create_organization_with_owner(
     db.add(owner)
     await db.flush()
     return org, owner
+
+
+async def rename_organization(db: AsyncSession, *, org: Organization, name: str) -> Organization:
+    org.name = name.strip()
+    await db.flush()
+    return org
 
 
 async def authenticate(db: AsyncSession, *, email: str, password: str) -> User | None:

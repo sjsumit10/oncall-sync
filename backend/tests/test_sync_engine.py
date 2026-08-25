@@ -358,7 +358,7 @@ async def test_another_org_cannot_sync_or_read_runs(
 ) -> None:
     rule = await make_rule(client)
     respx.reset()
-    await connected_org(invitee, org="Globex", email="owner@globex.dev")
+    await connected_org(invitee, email="owner@globex.dev")
 
     assert (
         await invitee.post(f"{RULES}/{rule['id']}/sync", headers=csrf(invitee))

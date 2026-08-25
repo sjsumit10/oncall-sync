@@ -87,14 +87,13 @@ def csrf(client: AsyncClient) -> dict[str, str]:
 async def signup(
     client: AsyncClient,
     *,
-    org: str = "Acme",
     email: str = "owner@acme.dev",
     password: str = "correct-horse-battery",
     name: str = "Ada",
 ) -> dict[str, object]:
     response = await client.post(
         "/api/v1/auth/signup",
-        json={"organization_name": org, "name": name, "email": email, "password": password},
+        json={"name": name, "email": email, "password": password},
     )
     assert response.status_code == 201, response.text
     return response.json()

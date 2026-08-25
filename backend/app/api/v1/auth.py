@@ -22,7 +22,6 @@ LOGIN_WINDOW_SECONDS = 900
 
 
 class SignupIn(BaseModel):
-    organization_name: str = Field(min_length=2, max_length=120)
     name: str = Field(min_length=1, max_length=120)
     email: EmailStr
     password: Password
@@ -53,7 +52,6 @@ async def signup(
 ) -> SessionOut:
     org, owner = await accounts.create_organization_with_owner(
         db,
-        org_name=payload.organization_name,
         name=payload.name,
         email=payload.email,
         password=payload.password,

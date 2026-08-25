@@ -308,7 +308,7 @@ async def test_activity_is_scoped_to_the_org(client: AsyncClient, invitee: Async
     mock_slack([])
     await sync(client, rule["id"])
     respx.reset()
-    await connected_org(invitee, org="Globex", email="owner@globex.dev")
+    await connected_org(invitee, email="owner@globex.dev")
 
     assert (await invitee.get("/api/v1/activity")).json() == []
     assert len((await client.get("/api/v1/activity")).json()) == 1

@@ -212,8 +212,8 @@ async def test_members_cannot_install(client: AsyncClient, invitee: AsyncClient)
 async def test_another_org_cannot_reach_the_workspace(
     client: AsyncClient, invitee: AsyncClient, slack_app: None
 ) -> None:
-    await signup(client, org="Acme", email="owner@acme.dev")
-    await signup(invitee, org="Globex", email="owner@globex.dev")
+    await signup(client, email="owner@acme.dev")
+    await signup(invitee, email="owner@globex.dev")
     connection = await install(client)
 
     assert (await invitee.get(f"{CHAT}/connections")).json() == []
@@ -229,10 +229,10 @@ async def test_another_org_cannot_reach_the_workspace(
 async def test_rls_scopes_workspaces_without_the_repository_layer(
     client: AsyncClient, invitee: AsyncClient, slack_app: None
 ) -> None:
-    acme = await signup(client, org="Acme", email="owner@acme.dev")
+    acme = await signup(client, email="owner@acme.dev")
     await install(client)
     respx.reset()
-    globex = await signup(invitee, org="Globex", email="owner@globex.dev")
+    globex = await signup(invitee, email="owner@globex.dev")
     respx.post(f"{API}/oauth.v2.access").mock(
         return_value=httpx.Response(
             200, json=install_response(team_id="T999", team_name="Globex WS")

@@ -11,8 +11,8 @@ from tests.conftest import csrf, signup
 
 
 async def two_orgs(a: AsyncClient, b: AsyncClient) -> tuple[dict[str, object], dict[str, object]]:
-    acme = await signup(a, org="Acme", email="owner@acme.dev")
-    globex = await signup(b, org="Globex", email="owner@globex.dev")
+    acme = await signup(a, email="owner@acme.dev")
+    globex = await signup(b, email="owner@globex.dev")
     return acme, globex
 
 

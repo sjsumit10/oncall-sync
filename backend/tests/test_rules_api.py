@@ -175,9 +175,9 @@ async def test_members_cannot_create_rules(client: AsyncClient, invitee: AsyncCl
 async def test_a_rule_cannot_reference_another_orgs_connection(
     client: AsyncClient, invitee: AsyncClient
 ) -> None:
-    ids = await connected_org(client, org="Acme", email="owner@acme.dev")
+    ids = await connected_org(client, email="owner@acme.dev")
     respx.reset()
-    other = await connected_org(invitee, org="Globex", email="owner@globex.dev")
+    other = await connected_org(invitee, email="owner@globex.dev")
 
     stolen = await invitee.post(
         "/api/v1/rules",
@@ -189,10 +189,10 @@ async def test_a_rule_cannot_reference_another_orgs_connection(
 
 @respx.mock
 async def test_rules_are_scoped_per_org(client: AsyncClient, invitee: AsyncClient) -> None:
-    ids = await connected_org(client, org="Acme", email="owner@acme.dev")
+    ids = await connected_org(client, email="owner@acme.dev")
     await client.post(RULES, json=rule_payload(ids), headers=csrf(client))
     respx.reset()
-    await connected_org(invitee, org="Globex", email="owner@globex.dev")
+    await connected_org(invitee, email="owner@globex.dev")
 
     assert (await invitee.get(RULES)).json() == []
     assert len((await client.get(RULES)).json()) == 1

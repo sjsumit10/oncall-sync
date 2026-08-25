@@ -56,10 +56,10 @@ async def test_a_new_rule_is_due_immediately(client: AsyncClient) -> None:
 @respx.mock
 async def test_the_scheduler_sees_every_tenant(client: AsyncClient, invitee: AsyncClient) -> None:
     """Claiming is deliberately cross-tenant; the work that follows is not."""
-    acme_ids = await connected_org(client, org="Acme", email="owner@acme.dev")
+    acme_ids = await connected_org(client, email="owner@acme.dev")
     acme = await client.post(RULES, json=rule_payload(acme_ids), headers=csrf(client))
     respx.reset()
-    globex_ids = await connected_org(invitee, org="Globex", email="owner@globex.dev")
+    globex_ids = await connected_org(invitee, email="owner@globex.dev")
     globex = await invitee.post(RULES, json=rule_payload(globex_ids), headers=csrf(invitee))
 
     claimed = await beat.claim_due_rules()
@@ -204,10 +204,10 @@ async def test_rules_stay_invisible_to_the_wrong_tenant_despite_the_scheduler(
 
     from app.db.models import SyncRule
 
-    acme_ids = await connected_org(client, org="Acme", email="owner@acme.dev")
+    acme_ids = await connected_org(client, email="owner@acme.dev")
     await client.post(RULES, json=rule_payload(acme_ids), headers=csrf(client))
     respx.reset()
-    globex = await connected_org(invitee, org="Globex", email="owner@globex.dev")
+    globex = await connected_org(invitee, email="owner@globex.dev")
     await invitee.post(RULES, json=rule_payload(globex), headers=csrf(invitee))
 
     globex_org = (await invitee.get("/api/v1/auth/me")).json()["organization"]["id"]
