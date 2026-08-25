@@ -20,8 +20,8 @@ from app.core.sessions import SESSION_COOKIE, read_session
 from app.db.models import MANAGER_ROLES, ChatChannel, ChatConnection, ChatGroup, User
 from app.db.repository import OrgScope
 from app.db.session import bind_org
+from app.domain.errors import GroupsUnavailable
 from app.domain.registry import CHAT_PROVIDERS, get_chat_provider
-from app.providers.chat.slack.provider import UserGroupsUnavailable
 from app.services import chat_connections, oauth_state
 
 router = APIRouter(prefix="/chat", tags=["chat workspaces"])
@@ -180,7 +180,7 @@ async def list_groups(
     if refresh or connection.groups_synced_at is None:
         try:
             return await chat_connections.sync_groups(db, connection)
-        except UserGroupsUnavailable as exc:
+        except GroupsUnavailable as exc:
             raise BadRequest(str(exc)) from exc
 
     return list(

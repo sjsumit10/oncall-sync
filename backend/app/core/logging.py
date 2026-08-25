@@ -6,6 +6,7 @@ import sys
 import structlog
 
 from app.config import get_settings
+from app.core.redaction import redact_processor
 
 
 def configure_logging() -> None:
@@ -14,6 +15,9 @@ def configure_logging() -> None:
 
     processors: list[structlog.typing.Processor] = [
         structlog.contextvars.merge_contextvars,
+        # Before anything renders, so a stray dict of credentials cannot
+        # reach any output.
+        redact_processor,
         structlog.processors.add_log_level,
         structlog.processors.TimeStamper(fmt="iso", utc=True),
         structlog.processors.StackInfoRenderer(),

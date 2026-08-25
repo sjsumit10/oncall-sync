@@ -30,6 +30,7 @@ dev = [
     "respx>=0.22",
     "freezegun>=1.5",
     "testcontainers[postgres]>=4.8",
+    "pyyaml>=6.0",
     "ruff>=0.8",
     "mypy>=1.13",
 ]
@@ -76,3 +77,6 @@ asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "session"
 asyncio_default_test_loop_scope = "session"
 testpaths = ["tests"]
+# The load tests seed a thousand rules; run them explicitly with -m slow.
+markers = ["slow: scale and load checks, excluded from the default run"]
+addopts = "-m 'not slow'"

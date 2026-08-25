@@ -12,6 +12,8 @@ import httpx
 import structlog
 from redis.asyncio import Redis
 
+from app.core import metrics
+
 log = structlog.get_logger(__name__)
 
 RETRY_STATUS = frozenset({429, 500, 502, 503, 504})
@@ -43,6 +45,7 @@ class RateLimiter:
     key: str
     limit: int
     window_seconds: int
+    provider: str = "unknown"
 
     async def acquire(self) -> None:
         if self.redis is None:
@@ -55,6 +58,7 @@ class RateLimiter:
                 return
             ttl = await self.redis.ttl(self.key)
             wait = ttl if ttl and ttl > 0 else self.window_seconds
+            metrics.RATE_LIMIT_HITS.labels(provider=self.provider).inc()
             log.warning("ratelimit.wait", key=self.key, seconds=wait)
             await asyncio.sleep(min(wait, self.window_seconds))
 
@@ -77,6 +81,7 @@ async def request(
     *,
     limiter: RateLimiter | None = None,
     attempts: int = DEFAULT_ATTEMPTS,
+    provider: str = "unknown",
     **kwargs: object,
 ) -> httpx.Response:
     last_error: Exception | None = None
@@ -89,6 +94,7 @@ async def request(
             response = await client.request(method, url, **kwargs)  # type: ignore[arg-type]
         except (httpx.TimeoutException, httpx.TransportError) as exc:
             last_error = exc
+            metrics.PROVIDER_ERRORS.labels(provider=provider, code="transport").inc()
             if attempt == attempts - 1:
                 break
             await asyncio.sleep(min(2.0**attempt, MAX_BACKOFF_SECONDS))
@@ -97,11 +103,14 @@ async def request(
         # 401/403 mean the credential is wrong or under-scoped. Retrying cannot
         # help and would just burn the provider's rate limit.
         if response.status_code in (401, 403):
+            metrics.PROVIDER_ERRORS.labels(provider=provider, code=str(response.status_code)).inc()
             raise ProviderAuthError(
                 f"{method} {url} rejected with {response.status_code}: {response.text[:200]}"
             )
 
         if response.status_code in RETRY_STATUS and attempt < attempts - 1:
+            if response.status_code == 429:
+                metrics.RATE_LIMIT_HITS.labels(provider=provider).inc()
             delay = _retry_after(response, attempt)
             log.warning(
                 "provider.retry", url=url, status=response.status_code, delay=delay, attempt=attempt
@@ -110,6 +119,7 @@ async def request(
             continue
 
         if response.status_code >= 400:
+            metrics.PROVIDER_ERRORS.labels(provider=provider, code=str(response.status_code)).inc()
             raise ProviderError(
                 f"{method} {url} failed with {response.status_code}: {response.text[:200]}",
                 status_code=response.status_code,

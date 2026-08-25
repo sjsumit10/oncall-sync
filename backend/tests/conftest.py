@@ -21,6 +21,7 @@ from app.main import app
 from scripts.bootstrap_db import bootstrap
 
 TABLES = (
+    "sync_runs",
     "sync_rules",
     "identity_links",
     "chat_channels",

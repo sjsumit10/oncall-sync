@@ -3,10 +3,10 @@ import { NavLink, Outlet } from "react-router-dom";
 import { useLogout, useSession } from "@/lib/auth";
 import { Button } from "./ui";
 
-// Activity arrives in M7.
 const NAV = [
   { to: "/", label: "Overview", end: true },
   { to: "/rules", label: "Rules", end: false },
+  { to: "/activity", label: "Activity", end: false },
   { to: "/connections", label: "Connections", end: false },
   { to: "/identities", label: "Identities", end: false },
   { to: "/settings", label: "Settings", end: false },

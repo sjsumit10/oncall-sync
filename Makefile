@@ -1,6 +1,10 @@
 .DEFAULT_GOAL := help
 COMPOSE := docker compose
 
+# Prefer the local virtualenv when there is one, so `make test` works without
+# having to remember to activate it.
+BIN := $(shell [ -x backend/.venv/bin/pytest ] && echo .venv/bin/ || echo "")
+
 help: ## List targets
 	@grep -hE '^[a-z-]+:.*?## ' $(MAKEFILE_LIST) | awk -F':.*?## ' '{printf "  %-14s %s\n", $$1, $$2}'
 
@@ -23,12 +27,19 @@ revision: ## Autogenerate a migration: make revision m="add sync_rules"
 	$(COMPOSE) run --rm api alembic revision --autogenerate -m "$(m)"
 
 test: ## Backend tests
-	cd backend && pytest
+	cd backend && $(BIN)pytest
+
+test-all: ## Backend tests including the scale checks
+	cd backend && $(BIN)pytest -m ''
+
+audit: ## Architecture, security and scale guards
+	cd backend && $(BIN)pytest tests/test_architecture.py tests/test_security.py \
+		tests/test_extensibility.py tests/test_load.py -m ''
 
 lint: ## Ruff + mypy
-	cd backend && ruff check . && ruff format --check . && mypy app
+	cd backend && $(BIN)ruff check . && $(BIN)ruff format --check . && $(BIN)mypy app scripts
 
 web: ## Frontend dev server
 	cd frontend && npm run dev
 
-.PHONY: help up down logs db-bootstrap migrate revision test lint web
+.PHONY: help up down logs db-bootstrap migrate revision test test-all audit lint web

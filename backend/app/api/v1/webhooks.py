@@ -9,8 +9,10 @@ from typing import Any
 
 import structlog
 from fastapi import APIRouter, Request, Response, status
+from sqlalchemy import select
 
 from app.core.deps import DbSession
+from app.db.models import RunTrigger, SyncRule
 from app.db.session import bind_org
 from app.providers.chat.slack.events import (
     SIGNATURE_HEADER,
@@ -18,6 +20,7 @@ from app.providers.chat.slack.events import (
     is_valid_signature,
 )
 from app.services import chat_connections
+from app.worker import queue
 
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
 log = structlog.get_logger(__name__)
@@ -74,12 +77,24 @@ async def slack_events(request: Request, db: DbSession) -> Any:
         log.info("slack.events.revoked", team_id=team_id, connections=len(connections))
 
     elif inner_type == "subteam_updated":
-        # Someone edited a user group by hand. M5 turns this into an immediate
-        # reconcile; until then it is recorded so drift is at least visible.
+        # Someone edited a managed user group by hand. Slack tells us for free,
+        # so repair it now rather than waiting out the safety interval.
+        subteam_id = (event.get("subteam") or {}).get("id")
+        repaired = 0
+        for connection in connections:
+            await bind_org(db, connection.org_id)
+            rule = await db.scalar(
+                select(SyncRule).where(
+                    SyncRule.chat_connection_id == connection.id,
+                    SyncRule.group_external_id == subteam_id,
+                    SyncRule.enabled.is_(True),
+                )
+            )
+            if rule is not None:
+                await queue.enqueue_reconcile(rule.id, rule.org_id, RunTrigger.EVENT.value)
+                repaired += 1
         log.info(
-            "slack.events.subteam_updated",
-            team_id=team_id,
-            subteam=(event.get("subteam") or {}).get("id"),
+            "slack.events.subteam_updated", team_id=team_id, subteam=subteam_id, rules=repaired
         )
 
     return Response(status_code=status.HTTP_200_OK)

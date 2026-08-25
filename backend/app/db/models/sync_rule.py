@@ -86,7 +86,9 @@ class SyncRule(Base, UUIDPrimaryKey, Timestamps):
 
     # --- reconcile state -----------------------------------------------------
     #: Last synced membership, used to tell a real handoff from drift repair.
-    current_members: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    current_members: Mapped[dict[str, Any] | None] = mapped_column(
+        JSONB(none_as_null=True), nullable=True
+    )
     state_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     #: The scheduler clock. M5's beat claims rules whose time has come.
     next_run_at: Mapped[datetime | None] = mapped_column(

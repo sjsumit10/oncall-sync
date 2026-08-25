@@ -5,9 +5,6 @@ used even though this is a confidential client: it costs one hash and removes
 authorization-code interception from the threat model entirely.
 """
 
-import base64
-import hashlib
-import secrets
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from urllib.parse import urlencode
@@ -16,20 +13,13 @@ import httpx
 
 from app.config import get_settings
 from app.core.http import ProviderAuthError, request
+from app.core.oauth import generate_pkce_pair
 from app.domain.types import OAuthTokens
 
 AUTHORIZE_URL = "https://identity.pagerduty.com/oauth/authorize"
 TOKEN_URL = "https://identity.pagerduty.com/oauth/token"  # noqa: S105 (a URL, not a secret)
 #: Read-only: this product never writes to PagerDuty.
 DEFAULT_SCOPES = ("schedules.read", "oncalls.read", "users.read")
-
-
-def generate_pkce_pair() -> tuple[str, str]:
-    """Return ``(verifier, challenge)`` for the S256 method."""
-    verifier = secrets.token_urlsafe(64)
-    digest = hashlib.sha256(verifier.encode()).digest()
-    challenge = base64.urlsafe_b64encode(digest).rstrip(b"=").decode()
-    return verifier, challenge
 
 
 def authorize_url(*, state: str, redirect_uri: str, code_challenge: str) -> str:
@@ -89,6 +79,18 @@ async def exchange_code(*, code: str, redirect_uri: str, code_verifier: str) -> 
 
 async def refresh(*, refresh_token: str) -> OAuthTokens:
     return await _token_request({"grant_type": "refresh_token", "refresh_token": refresh_token})
+
+
+__all__ = [
+    "AUTHORIZE_URL",
+    "DEFAULT_SCOPES",
+    "TOKEN_URL",
+    "PagerDutyOAuth",
+    "authorize_url",
+    "exchange_code",
+    "generate_pkce_pair",
+    "refresh",
+]
 
 
 class PagerDutyOAuth:

@@ -22,6 +22,15 @@ frontend/   React + Vite SPA
 docs/       Design plan
 ```
 
+## Getting started
+
+[`docs/SETUP.md`](docs/SETUP.md) is the full walkthrough: running the stack,
+registering the Slack app (there is a manifest to paste) and the PagerDuty OAuth
+app, wiring your first rule, and verifying a real handoff with a PagerDuty
+override. Start there.
+
+The quick version follows.
+
 ## Local development
 
 ```bash
@@ -50,14 +59,56 @@ point the Slack app's redirect URI at `<ngrok-url>/api/v1/chat/slack/callback`.
 
 ## Status
 
-**M4 — rules and identities.** On top of M1–M3: sync rule CRUD, the email-based
-identity resolver with manual override, the rule builder and identities pages,
-and the `/preview` dry run.
+**M8 — hardening. All eight milestones are complete.** The security review,
+scale checks and the extensibility proof are in place.
+
+**The extensibility proof.** `tests/fake_providers.py` implements an on-call
+provider and a chat provider from scratch against the interfaces, sharing no code
+with the Slack or PagerDuty adapters. `tests/test_extensibility.py` reconciles
+real rules through that pair — handoffs, drift repair, the degraded path,
+multi-level escalation, custom templates and precise scheduling — with **no
+changes to the engine, services, API or database layer**. Registering a provider
+is one line per registry.
+
+Three architectural guards keep it that way: business logic may not import a
+vendor adapter, the sync engine may not so much as mention a vendor by name, and
+every model carrying `org_id` must have a forced RLS policy in the database.
 
 `sync_rules.evaluate()` answers "who should this handle contain right now, and
-when does that change" without writing anything. `/preview` and M5's reconciler
-call the same function, so the dry run cannot diverge from what actually happens —
-a preview that lied would be worse than no preview.
+when does that change" without writing anything. `/preview`, "Sync now" and the
+scheduler all call the same function, so a dry run cannot diverge from what
+actually happens.
+
+Two distinctions carry most of the correctness:
+
+- **Writing vs announcing.** Membership is rewritten whenever the chat workspace
+  disagrees with the rule — including when a human hand-edited the group. A
+  message is posted only when the *on-call people actually changed*. Repairing
+  drift must never fabricate a handoff in the channel.
+- **Degraded vs failed.** A rule that resolves to nobody has not failed; it has
+  nothing safe to write. It leaves the handle exactly as it is, because a stale
+  handle still pages a human and an empty one pages no one.
+
+### How scheduling works
+
+Postgres holds the clock. Every rule carries `next_run_at`; a beat tick claims due
+rules with `FOR UPDATE SKIP LOCKED` and leases them, so two workers never get the
+same rule and a worker that dies mid-run does not strand it. Delayed jobs never
+live only in Redis — losing Redis costs at most one tick.
+
+The on-call window fetch already reveals the next shift boundary, so a rule wakes
+at the handoff instead of polling; the 5-minute reconcile is the safety net for
+retroactive overrides, schedule edits and manual drift.
+
+Claiming spans tenants — that is what a scheduler is — so it runs on the
+privileged admin connection while everything downstream binds an org and works
+under RLS like any request. The worker refuses to start if that role cannot bypass
+RLS, because the alternative failure mode is a scheduler that silently sees
+nothing and never fires a handoff while looking perfectly healthy.
+
+`next_run_at` is written as SQL `now()` rather than the app server's clock: the
+scheduler compares against the database's clock, and skew between the two would
+leave a due rule unclaimed.
 
 Two things are load-bearing and tested rather than asserted:
 
@@ -92,7 +143,68 @@ there is none, it leaves the handle **completely untouched** rather than emptyin
 it. `/preview` reports `would_write: false` in that case, so it never promises a
 change the reconciler will not make.
 
-The sync engine lands in M5.
+### Message templates
+
+Templates are user-written, so they render in a Jinja sandbox against a fixed
+variable allowlist. Loops, attribute access, subscripting and function calls are
+refused **when the template is saved** — a one-line handoff notice needs none of
+them, which makes the sandbox a second line of defence rather than the only one,
+and turns `{{ ''.__class__ }}` into a save-time error instead of a silent blank.
+
+Rendering is deliberately non-fatal: if a template fails at run time the handle is
+still updated and the built-in default is sent instead, with the problem recorded
+on the run. A typo in a message must never stop the group from pointing at the
+right person.
+
+Mention syntax comes from the chat provider rather than the engine — only the
+adapter knows what actually notifies someone on its platform — and the same
+`render_announcement` the engine posts through is what the editor previews, so
+the preview is exactly what would be sent.
+
+### Metrics
+
+Scrape **two** targets: the API on `/metrics`, and the worker on
+`WORKER_METRICS_PORT` (9100). The worker does nearly all the reconciling, so its
+counters are the ones that matter; the API is where the fleet gauges live, read at
+scrape time so a restarted process reports the truth rather than zeros.
+
+`oncall_handoff_lag_seconds` is the SLI — how long after a shift actually changed
+did the handle catch up. It deliberately counts **only** scheduled runs that moved
+the membership between two known states. A manual "Sync now", a first sync and a
+drift repair would each report a "lag" that says nothing about scheduling latency,
+and would quietly poison the metric; `tests/test_observability.py` asserts each of
+those is excluded.
+
+Supporting series: `oncall_sync_runs_total{status,trigger}`,
+`oncall_group_writes_total{reason}` (handoff vs drift repair),
+`oncall_provider_api_errors_total{provider,code}` — which records Slack's
+`ok:false` body errors too, since those never reach a status-code counter —
+`oncall_rate_limit_hits_total{provider}`, `oncall_unmapped_identities_total`,
+and the `oncall_rules{status}` / `oncall_connections{kind,status}` gauges.
+
+### Security
+
+`tests/test_security.py` encodes the review as assertions: no endpoint returns a
+stored credential, invite tokens are never retrievable after issue, session
+cookies are httpOnly while the CSRF half is deliberately readable, login is
+throttled, a wrong password is indistinguishable from an unknown address, and the
+OAuth callback only ever redirects to the configured SPA origin. Responses carry
+`nosniff`, `DENY` and a `default-src 'none'` CSP; logs pass through a redaction
+processor so a stray dict of credentials renders as `[redacted]`.
+
+### Scale
+
+`tests/test_load.py` (run with `-m slow`) seeds ~1,000 rules across 20 orgs and
+checks the scheduler's claim stays bounded and index-servable, and that
+successive ticks drain the backlog without ever handing the same rule out twice.
+
+## Documentation
+
+| Doc | For |
+|---|---|
+| [`docs/SETUP.md`](docs/SETUP.md) | Installing, registering the provider apps, first rule |
+| [`docs/OPERATIONS.md`](docs/OPERATIONS.md) | Deployment, monitoring, alerts, runbook |
+| [`docs/PLAN.md`](docs/PLAN.md) | Original design and milestone plan |
 
 ### Configuring the providers
 

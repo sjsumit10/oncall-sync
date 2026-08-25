@@ -13,6 +13,7 @@ import structlog
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import metrics
 from app.db.models import (
     ChatConnection,
     IdentityLink,
@@ -104,6 +105,7 @@ async def resolve(
         )
         if chat_user is None:
             unmapped.append(user)
+            metrics.IDENTITIES_UNMAPPED.inc()
             log.info(
                 "identity.unmapped", provider_user=user.external_id, email_domain=_domain(user)
             )

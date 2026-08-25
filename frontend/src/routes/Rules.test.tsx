@@ -73,6 +73,7 @@ const BASE_PREVIEW: RulePreview = {
   would_add: [],
   would_remove: [],
   used_fallback: false,
+  shift_start: null,
   next_change_at: null,
   problems: [],
 };

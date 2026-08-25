@@ -9,6 +9,7 @@ from app.db.models.invite import Invite
 from app.db.models.oncall_connection import ConnectionStatus, OncallConnection, OncallSchedule
 from app.db.models.organization import Organization
 from app.db.models.sync_rule import IdentityLink, IdentitySource, RuleStatus, SyncRule
+from app.db.models.sync_run import RunStatus, RunTrigger, SyncRun
 from app.db.models.user import MANAGER_ROLES, User, UserRole
 
 __all__ = [
@@ -25,7 +26,10 @@ __all__ = [
     "OrgDataKey",
     "Organization",
     "RuleStatus",
+    "RunStatus",
+    "RunTrigger",
     "SyncRule",
+    "SyncRun",
     "User",
     "UserRole",
 ]

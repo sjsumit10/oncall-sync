@@ -15,12 +15,12 @@ from app.api.v1.schemas import (
 from app.config import get_settings
 from app.core.deps import CurrentUser, DbSession, RedisClient, require_role
 from app.core.errors import BadRequest, NotFound
+from app.core.oauth import generate_pkce_pair
 from app.core.sessions import SESSION_COOKIE, read_session
 from app.db.models import MANAGER_ROLES, OncallConnection, OncallSchedule, User
 from app.db.repository import OrgScope
 from app.db.session import bind_org
 from app.domain.registry import ONCALL_OAUTH_FLOWS, ONCALL_PROVIDERS, get_oncall_oauth
-from app.providers.oncall.pagerduty.oauth import generate_pkce_pair
 from app.services import oauth_state, oncall_connections
 
 router = APIRouter(prefix="/oncall", tags=["on-call providers"])

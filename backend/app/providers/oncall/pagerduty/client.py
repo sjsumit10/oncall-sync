@@ -13,6 +13,7 @@ from redis.asyncio import Redis
 from app.core.http import RateLimiter, request
 from app.domain.types import AuthMode, Credentials
 
+PROVIDER = "pagerduty"
 API_BASE = "https://api.pagerduty.com"
 ACCEPT = "application/vnd.pagerduty+json;version=2"
 PAGE_SIZE = 100
@@ -40,6 +41,7 @@ class PagerDutyClient:
             key=f"ratelimit:pagerduty:{credentials.org_id}",
             limit=RATE_LIMIT,
             window_seconds=RATE_WINDOW_SECONDS,
+            provider=PROVIDER,
         )
 
     async def __aenter__(self) -> "PagerDutyClient":
@@ -68,6 +70,7 @@ class PagerDutyClient:
             "GET",
             f"{API_BASE}{path}",
             limiter=self._limiter,
+            provider=PROVIDER,
             headers=self._headers,
             params=params,
         )

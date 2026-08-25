@@ -13,13 +13,13 @@ import pytest
 import respx
 
 from app.core.http import ProviderAuthError
-from app.domain.types import ChatCredentials
-from app.providers.chat.slack.provider import (
+from app.domain.errors import (
     EmptyMembershipRejected,
+    GroupsUnavailable,
     GroupWriteNotPermitted,
-    SlackProvider,
-    UserGroupsUnavailable,
 )
+from app.domain.types import ChatCredentials
+from app.providers.chat.slack.provider import SlackProvider
 from tests.slack_fixtures import API, channel, err, ok, slack_user, usergroup
 
 BOTH_TOKENS = ChatCredentials(org_id=uuid.uuid4(), bot_token="xoxb-bot", user_token="xoxp-user")
@@ -101,7 +101,7 @@ async def test_free_plan_workspaces_are_identified() -> None:
         return_value=httpx.Response(200, json=err("plan_upgrade_required"))
     )
 
-    with pytest.raises(UserGroupsUnavailable):
+    with pytest.raises(GroupsUnavailable):
         await SlackProvider().list_groups(BOTH_TOKENS)
 
 

@@ -8,7 +8,13 @@ import structlog
 from redis.asyncio import Redis
 
 from app.core.http import ProviderAuthError
+from app.domain.errors import (
+    EmptyMembershipRejected,
+    GroupsUnavailable,
+    GroupWriteNotPermitted,
+)
 from app.domain.types import (
+    Announcement,
     ChannelRef,
     ChatCredentials,
     ChatInstall,
@@ -17,6 +23,7 @@ from app.domain.types import (
     MessageRef,
     ProviderHealth,
 )
+from app.providers.chat.slack import blocks as block_kit
 from app.providers.chat.slack import oauth
 from app.providers.chat.slack.client import (
     EMPTY_MEMBERSHIP_ERRORS,
@@ -27,18 +34,6 @@ from app.providers.chat.slack.client import (
 )
 
 log = structlog.get_logger(__name__)
-
-
-class GroupWriteNotPermitted(RuntimeError):
-    """Neither the bot nor the installing user may manage this workspace's groups."""
-
-
-class UserGroupsUnavailable(RuntimeError):
-    """User groups are a Standard-and-above Slack feature."""
-
-
-class EmptyMembershipRejected(RuntimeError):
-    """Slack refuses to leave a user group with no members."""
 
 
 def _to_group(payload: dict[str, Any]) -> GroupRef:
@@ -112,7 +107,7 @@ class SlackProvider:
             payload = await api.call("usergroups.list", {"include_disabled": "false"})
         except SlackApiError as exc:
             if exc.error == PLAN_UPGRADE_REQUIRED:
-                raise UserGroupsUnavailable(
+                raise GroupsUnavailable(
                     "Slack user groups require a Standard plan or above"
                 ) from exc
             raise
@@ -188,7 +183,7 @@ class SlackProvider:
     @staticmethod
     def _translate(exc: SlackApiError) -> Exception:
         if exc.error == PLAN_UPGRADE_REQUIRED:
-            return UserGroupsUnavailable("Slack user groups require a Standard plan or above")
+            return GroupsUnavailable("Slack user groups require a Standard plan or above")
         if exc.error in EMPTY_MEMBERSHIP_ERRORS:
             return EmptyMembershipRejected("Slack rejected an empty user group")
         return exc
@@ -227,3 +222,18 @@ class SlackProvider:
         finally:
             await api.aclose()
         return MessageRef(channel_id=payload.get("channel", channel_id), ts=payload.get("ts", ""))
+
+    def format_mention(self, chat_user_id: str) -> str:
+        """Slack only notifies a person for the <@id> form, not their name."""
+        return f"<@{chat_user_id}>"
+
+    def render_announcement(
+        self, announcement: Announcement
+    ) -> tuple[str, list[dict[str, object]]]:
+        return block_kit.notification_text(announcement), block_kit.build(announcement)
+
+    async def post_announcement(
+        self, credentials: ChatCredentials, channel_id: str, announcement: Announcement
+    ) -> MessageRef:
+        text, blocks = self.render_announcement(announcement)
+        return await self.post_message(credentials, channel_id, text, blocks)

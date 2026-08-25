@@ -3,6 +3,7 @@ import { Route, Routes } from "react-router-dom";
 import { AppLayout } from "@/components/AppLayout";
 import { RequireAuth } from "@/components/RequireAuth";
 import AcceptInvite from "@/routes/AcceptInvite";
+import Activity from "@/routes/Activity";
 import Connections from "@/routes/Connections";
 import Identities from "@/routes/Identities";
 import Login from "@/routes/Login";
@@ -30,6 +31,7 @@ export default function App() {
         <Route path="/rules" element={<Rules />} />
         <Route path="/rules/new" element={<RuleBuilder />} />
         <Route path="/identities" element={<Identities />} />
+        <Route path="/activity" element={<Activity />} />
         <Route path="/settings" element={<Settings />} />
       </Route>
     </Routes>

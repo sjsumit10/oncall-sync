@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, Depends
 
-from app.api.v1 import auth, chat, identities, oncall, orgs, rules
+from app.api.v1 import activity, auth, chat, identities, oncall, orgs, rules
 from app.core.deps import require_csrf
 
 # CSRF is enforced router-wide; it no-ops on safe methods and on requests that
@@ -17,3 +17,4 @@ router.include_router(oncall.router)
 router.include_router(chat.router)
 router.include_router(rules.router)
 router.include_router(identities.router)
+router.include_router(activity.router)

@@ -13,7 +13,12 @@ from contextvars import ContextVar, Token
 
 from sqlalchemy import event, text
 from sqlalchemy.engine import Connection
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 from sqlalchemy.orm import Session, SessionTransaction
 
 from app.config import get_settings
@@ -27,6 +32,32 @@ engine = create_async_engine(
 )
 
 SessionLocal = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
+
+#: The scheduler has to see every tenant's due rules at once — that is what a
+#: scheduler is. Rather than punching an unbound-read hole in sync_rules' RLS
+#: policy, that one query runs on a separate privileged connection, and every
+#: step afterwards binds an org and runs under RLS like any request. The admin
+#: role therefore has to be able to bypass RLS; app/worker/beat.py checks that at
+#: startup, because the alternative failure mode is a scheduler that silently
+#: sees nothing and never fires a handoff.
+_admin_engine: AsyncEngine | None = None
+
+
+def get_admin_engine() -> AsyncEngine:
+    global _admin_engine
+    if _admin_engine is None:
+        _admin_engine = create_async_engine(
+            str(_settings.admin_database_url), pool_pre_ping=True, pool_size=2
+        )
+    return _admin_engine
+
+
+async def dispose_admin_engine() -> None:
+    global _admin_engine
+    if _admin_engine is not None:
+        await _admin_engine.dispose()
+        _admin_engine = None
+
 
 #: Org of the authenticated caller. Unset for unauthenticated and worker contexts.
 current_org_id: ContextVar[uuid.UUID | None] = ContextVar("current_org_id", default=None)

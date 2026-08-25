@@ -2,7 +2,7 @@
 
 import uuid
 from datetime import datetime
-from typing import Annotated
+from typing import Annotated, Any
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
@@ -160,6 +160,7 @@ class SyncRuleOut(BaseModel):
     fallback_chat_user_id: str | None
     notify_channel_external_id: str | None
     notify_on_change: bool
+    message_template: str | None
     status: str
     last_synced_at: datetime | None
     last_error: str | None
@@ -197,6 +198,7 @@ class RulePreviewOut(BaseModel):
     would_add: list[str]
     would_remove: list[str]
     used_fallback: bool
+    shift_start: datetime | None
     next_change_at: datetime | None
     problems: list[str]
 
@@ -219,3 +221,46 @@ class DirectoryEntryOut(BaseModel):
 
     provider_user: ProviderUserOut
     link: IdentityLinkOut | None
+
+
+class SyncRunOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    rule_id: uuid.UUID
+    trigger: str
+    status: str
+    started_at: datetime
+    finished_at: datetime | None
+    duration_ms: int | None
+    previous_members: list[str] | None
+    new_members: list[str] | None
+    actions: list[str] | None
+    problems: list[str] | None
+    error: str | None
+
+
+class MessagePreviewOut(BaseModel):
+    """A rendered template. Nothing is posted."""
+
+    text: str
+    blocks: list[dict[str, Any]]
+    problems: list[str]
+    #: The values the sample render used, so the editor can label each variable.
+    variables: dict[str, str]
+
+
+class ActivityRunOut(SyncRunOut):
+    """A run with enough context to read it without opening the rule."""
+
+    rule_name: str
+
+
+class OverviewOut(BaseModel):
+    rules_total: int
+    rules_by_status: dict[str, int]
+    rules_paused: int
+    connections_needing_attention: int
+    #: The most recent run that actually changed who is on call.
+    last_handoff_at: datetime | None
+    last_run_at: datetime | None

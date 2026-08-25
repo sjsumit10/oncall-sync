@@ -133,6 +133,7 @@ export interface SyncRule {
   fallback_chat_user_id: string | null;
   notify_channel_external_id: string | null;
   notify_on_change: boolean;
+  message_template: string | null;
   status: RuleStatus;
   last_synced_at: string | null;
   last_error: string | null;
@@ -166,6 +167,7 @@ export interface RulePreview {
   would_add: string[];
   would_remove: string[];
   used_fallback: boolean;
+  shift_start: string | null;
   next_change_at: string | null;
   problems: string[];
 }
@@ -184,4 +186,41 @@ export interface IdentityLink {
 export interface DirectoryEntry {
   provider_user: ProviderUser;
   link: IdentityLink | null;
+}
+
+export interface SyncRun {
+  id: string;
+  rule_id: string;
+  trigger: "scheduled" | "manual" | "event";
+  status: "success" | "degraded" | "failed" | "skipped";
+  started_at: string;
+  finished_at: string | null;
+  duration_ms: number | null;
+  previous_members: string[] | null;
+  new_members: string[] | null;
+  actions: string[] | null;
+  problems: string[] | null;
+  error: string | null;
+}
+
+export interface MessagePreview {
+  text: string;
+  blocks: Array<Record<string, unknown>>;
+  problems: string[];
+  /** The sample values the preview rendered with, for labelling each variable. */
+  variables: Record<string, string>;
+}
+
+export interface ActivityRun extends SyncRun {
+  rule_name: string;
+}
+
+export interface Overview {
+  rules_total: number;
+  rules_by_status: Record<string, number>;
+  rules_paused: number;
+  connections_needing_attention: number;
+  /** The most recent run that actually changed who is on call. */
+  last_handoff_at: string | null;
+  last_run_at: string | null;
 }

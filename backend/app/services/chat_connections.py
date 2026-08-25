@@ -10,9 +10,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core import crypto
 from app.core.http import ProviderAuthError
 from app.db.models import ChatChannel, ChatConnection, ChatGroup, ConnectionStatus
+from app.domain.errors import GroupsUnavailable
 from app.domain.registry import get_chat_provider
 from app.domain.types import ChatCredentials, ChatInstall, ProviderHealth
-from app.providers.chat.slack.provider import UserGroupsUnavailable
 
 log = structlog.get_logger(__name__)
 
@@ -107,7 +107,7 @@ async def sync_groups(db: AsyncSession, connection: ChatConnection) -> list[Chat
     credentials = await credentials_for(db, connection)
     try:
         fetched = await get_chat_provider(connection.kind).list_groups(credentials)
-    except UserGroupsUnavailable as exc:
+    except GroupsUnavailable as exc:
         # The core feature is unavailable on this plan. Say so plainly now rather
         # than letting the first sync fail mysteriously later.
         connection.status = ConnectionStatus.ERROR

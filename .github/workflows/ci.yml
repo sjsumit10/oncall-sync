@@ -34,6 +34,9 @@ jobs:
       - run: ruff format --check .
       - run: mypy app
       - run: pytest
+      # Scale checks are excluded from the default run; CI is where they
+      # are cheap enough to run every time.
+      - run: pytest -m slow
 
   frontend:
     runs-on: ubuntu-latest

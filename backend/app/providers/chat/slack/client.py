@@ -12,8 +12,10 @@ from typing import Any
 import httpx
 from redis.asyncio import Redis
 
+from app.core import metrics
 from app.core.http import ProviderAuthError, ProviderError, RateLimiter, request
 
+PROVIDER = "slack"
 API_BASE = "https://slack.com/api"
 PAGE_SIZE = 200
 MAX_PAGES = 50
@@ -60,6 +62,7 @@ class SlackClient:
             key=f"ratelimit:slack:usergroups:{org_id or 'global'}",
             limit=USERGROUP_RATE_LIMIT,
             window_seconds=RATE_WINDOW_SECONDS,
+            provider=PROVIDER,
         )
 
     async def aclose(self) -> None:
@@ -77,6 +80,7 @@ class SlackClient:
             # Only the Tier 2 user-group writes need the shared budget; reads are
             # cheap and throttling them would slow every picker in the UI.
             limiter=self._limiter if write else None,
+            provider=PROVIDER,
             headers={"Authorization": f"Bearer {self._token}"},
             data={k: v for k, v in (params or {}).items() if v is not None},
         )
@@ -85,6 +89,9 @@ class SlackClient:
             return payload
 
         error = str(payload.get("error", "unknown_error"))
+        # Slack answers 200 with ok:false, so these never reach the status-code
+        # counter in the HTTP layer and have to be recorded here.
+        metrics.PROVIDER_ERRORS.labels(provider=PROVIDER, code=error).inc()
         if error in AUTH_ERRORS:
             raise ProviderAuthError(f"Slack {method} rejected the token: {error}")
         raise SlackApiError(method, error, payload.get("needed"))

@@ -9,6 +9,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
+from typing import Literal
 
 
 class AuthMode(StrEnum):
@@ -139,3 +140,19 @@ class ChatInstall:
 class MessageRef:
     channel_id: str
     ts: str
+
+
+@dataclass(frozen=True, slots=True)
+class Announcement:
+    """A message to post, described in provider-neutral terms.
+
+    The rendered body comes from the user's template; how it is presented — Slack
+    Block Kit, a Teams adaptive card — is the adapter's business, so no vendor
+    markup reaches the sync engine.
+    """
+
+    text: str
+    kind: Literal["handoff", "problem"] = "handoff"
+    schedule_name: str | None = None
+    handle: str | None = None
+    shift_end: datetime | None = None

@@ -6,9 +6,10 @@ import { Alert, Button, Card } from "@/components/ui";
 import { api } from "@/lib/api";
 import { useSession } from "@/lib/auth";
 import { useConnections, useGroups, useSchedules } from "@/lib/connections";
-import type { RulePreview, SyncRule } from "@/lib/types";
+import type { RulePreview, SyncRule, SyncRun } from "@/lib/types";
 import { errorMessage } from "./Login";
 import { RulePreviewPanel } from "./RulePreviewPanel";
+import { RunHistory } from "./RunHistory";
 
 const STATUS_LABEL: Record<string, string> = {
   pending: "Not synced yet",
@@ -77,6 +78,7 @@ export default function Rules() {
 function RuleCard({ rule, canManage }: { rule: SyncRule; canManage: boolean }) {
   const queryClient = useQueryClient();
   const [preview, setPreview] = useState<RulePreview | null>(null);
+  const [showRuns, setShowRuns] = useState(false);
 
   const schedules = useSchedules(rule.oncall_connection_id);
   const groups = useGroups(rule.chat_connection_id);
@@ -90,6 +92,15 @@ function RuleCard({ rule, canManage }: { rule: SyncRule; canManage: boolean }) {
   const runPreview = useMutation({
     mutationFn: () => api.post<RulePreview>(`/rules/${rule.id}/preview`),
     onSuccess: setPreview,
+  });
+  const syncNow = useMutation({
+    mutationFn: () => api.post<SyncRun>(`/rules/${rule.id}/sync`),
+    onSuccess: () => {
+      setPreview(null);
+      setShowRuns(true);
+      queryClient.invalidateQueries({ queryKey: ["rules"] });
+      queryClient.invalidateQueries({ queryKey: ["runs", rule.id] });
+    },
   });
   const toggle = useMutation({
     mutationFn: () => api.patch<SyncRule>(`/rules/${rule.id}`, { enabled: !rule.enabled }),
@@ -121,8 +132,14 @@ function RuleCard({ rule, canManage }: { rule: SyncRule; canManage: boolean }) {
           <Button variant="ghost" onClick={() => runPreview.mutate()} disabled={runPreview.isPending}>
             {runPreview.isPending ? "Checking…" : "Preview"}
           </Button>
+          <Button variant="ghost" onClick={() => setShowRuns((open) => !open)}>
+            {showRuns ? "Hide runs" : "Runs"}
+          </Button>
           {canManage && (
             <>
+              <Button onClick={() => syncNow.mutate()} disabled={syncNow.isPending}>
+                {syncNow.isPending ? "Syncing…" : "Sync now"}
+              </Button>
               <Button variant="ghost" onClick={() => toggle.mutate()} disabled={toggle.isPending}>
                 {rule.enabled ? "Pause" : "Resume"}
               </Button>
@@ -147,7 +164,13 @@ function RuleCard({ rule, canManage }: { rule: SyncRule; canManage: boolean }) {
           <Alert>{errorMessage(runPreview.error)}</Alert>
         </div>
       )}
+      {syncNow.error && (
+        <div className="mt-3">
+          <Alert>{errorMessage(syncNow.error)}</Alert>
+        </div>
+      )}
       {preview && <RulePreviewPanel preview={preview} />}
+      {showRuns && <RunHistory ruleId={rule.id} />}
     </Card>
   );
 }

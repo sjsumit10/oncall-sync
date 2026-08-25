@@ -7,6 +7,7 @@ import { api } from "@/lib/api";
 import { useChannels, useConnections, useGroups, useSchedules } from "@/lib/connections";
 import type { SyncRule } from "@/lib/types";
 import { errorMessage } from "./Login";
+import { ResetTemplateButton, TemplateEditor } from "./TemplateEditor";
 
 const LEVELS = [1, 2, 3];
 
@@ -23,6 +24,7 @@ export default function RuleBuilder() {
   const [levels, setLevels] = useState<number[]>([1]);
   const [notify, setNotify] = useState(true);
   const [fallback, setFallback] = useState("");
+  const [template, setTemplate] = useState("");
 
   // Default to the only connection of each kind, which is the normal case.
   useEffect(() => {
@@ -47,6 +49,7 @@ export default function RuleBuilder() {
         group_external_id: groupId,
         notify_channel_external_id: notify && channelId ? channelId : null,
         notify_on_change: notify,
+        message_template: template.trim() || null,
         fallback_chat_user_id: fallback.trim() || null,
       }),
     onSuccess: () => navigate("/rules"),
@@ -136,15 +139,19 @@ export default function RuleBuilder() {
           </label>
 
           {notify && (
-            <Select
-              label="Channel"
-              value={channelId}
-              onChange={setChannelId}
-              options={(channels.data ?? [])
-                .filter((c) => c.bot_is_member)
-                .map((c) => ({ value: c.external_id, label: `#${c.name}` }))}
-              empty="No channels the app has joined. Invite it to a channel, then refresh."
-            />
+            <>
+              <Select
+                label="Channel"
+                value={channelId}
+                onChange={setChannelId}
+                options={(channels.data ?? [])
+                  .filter((c) => c.bot_is_member)
+                  .map((c) => ({ value: c.external_id, label: `#${c.name}` }))}
+                empty="No channels the app has joined. Invite it to a channel, then refresh."
+              />
+              <TemplateEditor value={template} onChange={setTemplate} />
+              {template.trim() && <ResetTemplateButton onReset={() => setTemplate("")} />}
+            </>
           )}
 
           <Field

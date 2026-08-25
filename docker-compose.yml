@@ -38,6 +38,9 @@ services:
     build: ./backend
     command: arq app.worker.arq_app.WorkerSettings --watch app
     env_file: [.env]
+    # Prometheus scrape target: the worker does the reconciling, so its counters
+    # are the ones that matter.
+    ports: ["${WORKER_METRICS_PORT:-9100}:9100"]
     environment:
       DATABASE_URL: postgresql+asyncpg://oncall_app:oncall_app@postgres:5432/oncall
       DATABASE_ADMIN_URL: postgresql+asyncpg://oncall:oncall@postgres:5432/oncall

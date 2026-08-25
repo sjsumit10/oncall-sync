@@ -3,6 +3,7 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
+import structlog
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
@@ -12,8 +13,11 @@ from app.api.v1 import router as v1_router
 from app.api.v1.webhooks import router as webhooks_router
 from app.config import get_settings
 from app.core.logging import configure_logging
+from app.core.middleware import SecurityHeadersMiddleware
+from app.services.health import refresh_gauges
 
 settings = get_settings()
+log = structlog.get_logger(__name__)
 
 
 @asynccontextmanager
@@ -29,6 +33,7 @@ app = FastAPI(
     docs_url="/docs" if settings.environment != "production" else None,
 )
 
+app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[settings.web_base_url],
@@ -49,4 +54,10 @@ async def health() -> dict[str, str]:
 
 @app.get("/metrics", include_in_schema=False)
 async def metrics() -> Response:
+    # Gauges are read at scrape time so a restarted process reports the truth
+    # immediately rather than zeros until something moves a counter.
+    try:
+        await refresh_gauges()
+    except Exception:
+        log.warning("metrics.gauge_refresh_failed", exc_info=True)
     return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)

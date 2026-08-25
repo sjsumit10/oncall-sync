@@ -43,6 +43,8 @@ class RuleEvaluation:
     unmapped: list[ProviderUser]
     desired_member_ids: list[str]
     used_fallback: bool = False
+    #: When the shift currently in force began.
+    shift_start: datetime | None = None
     next_change_at: datetime | None = None
     #: Reasons the rule cannot do what it was asked to. Non-empty means degraded.
     problems: list[str] = field(default_factory=list)
@@ -60,6 +62,13 @@ def _current_users(spans: list[OncallSpan], levels: list[int], at: datetime) -> 
             # One person can hold several levels; keep them once.
             seen.setdefault(span.user.external_id, span.user)
     return list(seen.values())
+
+
+def _shift_start(spans: list[OncallSpan], levels: list[int], at: datetime) -> datetime | None:
+    """The latest start among the shifts in force — i.e. when this handoff happened."""
+    wanted = set(levels)
+    starts = [span.start for span in spans if span.level in wanted and span.covers(at)]
+    return max(starts) if starts else None
 
 
 def _next_boundary(spans: list[OncallSpan], levels: list[int], at: datetime) -> datetime | None:
@@ -121,6 +130,7 @@ async def evaluate(
         resolved=resolution.resolved,
         unmapped=resolution.unmapped,
         desired_member_ids=resolution.chat_user_ids,
+        shift_start=_shift_start(spans, rule.escalation_levels, now),
         next_change_at=_next_boundary(spans, rule.escalation_levels, now),
     )
 

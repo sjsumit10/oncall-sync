@@ -9,6 +9,7 @@ from datetime import datetime
 from typing import Protocol, runtime_checkable
 
 from app.domain.types import (
+    Announcement,
     AuthMode,
     ChannelRef,
     ChatCredentials,
@@ -107,3 +108,23 @@ class ChatProvider(Protocol):
         text: str,
         blocks: list[dict[str, object]] | None = None,
     ) -> MessageRef: ...
+
+    def render_announcement(
+        self, announcement: Announcement
+    ) -> tuple[str, list[dict[str, object]]]:
+        """Turn a neutral announcement into ``(fallback_text, rich_payload)``.
+
+        Separate from posting so the template editor can preview exactly what
+        would be sent without sending it.
+        """
+        ...
+
+    async def post_announcement(
+        self, credentials: ChatCredentials, channel_id: str, announcement: Announcement
+    ) -> MessageRef:
+        """Post a rendered announcement using this provider's rich format."""
+        ...
+
+    def format_mention(self, chat_user_id: str) -> str:
+        """Wrap a user id in the syntax that actually notifies them here."""
+        ...
