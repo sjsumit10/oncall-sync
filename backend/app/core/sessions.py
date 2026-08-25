@@ -19,7 +19,7 @@ from app.core.security import generate_token, hash_token
 SESSION_COOKIE = "oncall_session"
 CSRF_COOKIE = "oncall_csrf"
 CSRF_HEADER = "X-CSRF-Token"
-SESSION_TTL = timedelta(days=14)
+SESSION_TTL = timedelta(days=1)
 
 _SESSION_KEY = "session:{sid_hash}"
 _USER_SESSIONS_KEY = "user_sessions:{user_id}"
