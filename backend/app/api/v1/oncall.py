@@ -39,7 +39,8 @@ class OAuthStartOut(BaseModel):
 
 
 def _callback_uri(kind: str) -> str:
-    return f"{get_settings().app_base_url}/api/v1/oncall/connections/{kind}/oauth/callback"
+    base = get_settings().oauth_public_base_url
+    return f"{base}/api/v1/oncall/connections/{kind}/oauth/callback"
 
 
 def _oauth_configured(kind: str) -> bool:

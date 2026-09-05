@@ -84,24 +84,33 @@ Slack's events endpoint and both OAuth callbacks need a public HTTPS URL.
 ngrok http 8000
 ```
 
-Take the `https://` forwarding address and set it in `.env`, then restart:
+Take the `https://` forwarding address and set it as `OAUTH_CALLBACK_BASE_URL` in
+`.env`, then restart:
 
 ```
-APP_BASE_URL=https://<your-subdomain>.ngrok-free.app
+APP_BASE_URL=http://localhost:8000
 WEB_BASE_URL=http://localhost:5173
+OAUTH_CALLBACK_BASE_URL=https://<your-subdomain>.ngrok-free.app
 ```
+
+`APP_BASE_URL` stays `localhost` — it's what the app uses for everything else.
+`OAUTH_CALLBACK_BASE_URL` only affects the two URLs that Slack/PagerDuty's own
+servers have to be able to reach, and is optional: leave it unset and those fall
+back to `APP_BASE_URL` too, which is what you want once you're running behind a
+real public domain instead of a dev tunnel.
 
 ```bash
 docker compose up -d --force-recreate api worker
 ```
 
-Everything below derives from `APP_BASE_URL`:
+Everything below derives from `OAUTH_CALLBACK_BASE_URL` (or `APP_BASE_URL` if
+that's unset):
 
 | Purpose | URL |
 |---|---|
-| Slack OAuth redirect | `$APP_BASE_URL/api/v1/chat/slack/callback` |
-| Slack events | `$APP_BASE_URL/api/v1/webhooks/slack/events` |
-| PagerDuty OAuth redirect | `$APP_BASE_URL/api/v1/oncall/connections/pagerduty/oauth/callback` |
+| Slack OAuth redirect | `$OAUTH_CALLBACK_BASE_URL/api/v1/chat/slack/callback` |
+| Slack events | `$OAUTH_CALLBACK_BASE_URL/api/v1/webhooks/slack/events` |
+| PagerDuty OAuth redirect | `$OAUTH_CALLBACK_BASE_URL/api/v1/oncall/connections/pagerduty/oauth/callback` |
 
 > ngrok gives you a new subdomain each restart on the free tier, and every URL
 > above changes with it. Expect to update both consoles if you restart the tunnel.
@@ -127,7 +136,7 @@ Slack-specific. You register the app once, in your own Slack account.
 
 Go to <https://api.slack.com/apps> → **Create New App** → **From an app manifest**,
 pick your workspace, and paste this — replacing `YOUR-DOMAIN` with your
-`APP_BASE_URL` host:
+`OAUTH_CALLBACK_BASE_URL` host (or `APP_BASE_URL` host, if you didn't set one):
 
 ```yaml
 display_information:

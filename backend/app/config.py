@@ -20,6 +20,11 @@ class Settings(BaseSettings):
     debug: bool = False
     app_base_url: str = "http://localhost:8000"
     web_base_url: str = "http://localhost:5173"
+    # Where Slack/PagerDuty redirect the browser back to after an OAuth install.
+    # Unlike app_base_url (used for everything else), this has to be a URL those
+    # providers can reach on their own, so local dev behind a tunnel can point it
+    # at the tunnel host while the app itself keeps using plain localhost.
+    oauth_callback_base_url: str = ""
 
     # The runtime connects as a least-privileged, non-superuser role. This is not
     # hygiene for its own sake: superusers bypass row-level security outright, and
@@ -64,6 +69,10 @@ class Settings(BaseSettings):
     @property
     def admin_database_url(self) -> PostgresDsn:
         return self.database_admin_url or self.database_url
+
+    @property
+    def oauth_public_base_url(self) -> str:
+        return self.oauth_callback_base_url or self.app_base_url
 
 
 @lru_cache

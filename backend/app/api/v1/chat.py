@@ -2,7 +2,8 @@
 
 import uuid
 
-from fastapi import APIRouter, Depends, Query, Request, status
+import structlog
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 
@@ -24,6 +25,8 @@ from app.domain.errors import GroupsUnavailable
 from app.domain.registry import CHAT_PROVIDERS, get_chat_provider
 from app.services import chat_connections, oauth_state
 
+log = structlog.get_logger(__name__)
+
 router = APIRouter(prefix="/chat", tags=["chat workspaces"])
 
 RequireManager = Depends(require_role(*MANAGER_ROLES))
@@ -34,7 +37,7 @@ class InstallStartOut(BaseModel):
 
 
 def _callback_uri(kind: str) -> str:
-    return f"{get_settings().app_base_url}/api/v1/chat/{kind}/callback"
+    return f"{get_settings().oauth_public_base_url}/api/v1/chat/{kind}/callback"
 
 
 def _install_configured(kind: str) -> bool:
@@ -148,8 +151,18 @@ async def finish_install(
             installed_by_user_id=uuid.UUID(stored.user_id),
         )
         await db.commit()
-    except Exception:
-        return back("error=install_failed")
+    except Exception as exc:
+        log.exception("chat.install_failed", kind=kind, org_id=str(org_id))
+        # Production still degrades to a redirect: this is browser navigation
+        # from Slack, and a raw 500 with internals leaks to whoever is looking
+        # at that browser. Everywhere else, surface the real error immediately
+        # instead of sending you back to the logs.
+        if get_settings().environment == "production":
+            return back("error=install_failed")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Slack install failed: {exc}",
+        ) from exc
 
     return back(f"installed={kind}")
 
