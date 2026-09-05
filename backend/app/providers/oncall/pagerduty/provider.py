@@ -4,8 +4,10 @@ from datetime import datetime
 from typing import Any
 
 import httpx
+import structlog
 from redis.asyncio import Redis
 
+from app.core.http import ProviderAuthError, ProviderError
 from app.domain.types import (
     AuthMode,
     Credentials,
@@ -15,6 +17,8 @@ from app.domain.types import (
     ScheduleRef,
 )
 from app.providers.oncall.pagerduty.client import PagerDutyClient
+
+log = structlog.get_logger(__name__)
 
 
 def _parse_time(value: str | None) -> datetime | None:
@@ -55,18 +59,35 @@ class PagerDutyProvider:
         """Round-trip the smallest call that needs the scopes we actually use."""
         api = self._api(credentials)
         try:
-            payload = await api.get("/schedules", {"limit": 1})
+            payload = await api.get("/schedules", {"limit": 1, "total": "true"})
+            v3_total: int | None = None
+            try:
+                v3_payload = await api.get("/v3/schedules", {"limit": 1, "total": "true"})
+                v3_total = v3_payload.get("total")
+            except (ProviderAuthError, ProviderError):
+                pass
         finally:
             await api.aclose()
 
         total = payload.get("total")
+        if total is not None and v3_total is not None:
+            total += v3_total
         detail = "Connected" if total is None else f"Connected · {total} schedules visible"
         return ProviderHealth(ok=True, detail=detail)
 
     async def list_schedules(self, credentials: Credentials) -> list[ScheduleRef]:
+        """Classic schedules plus shift-based ones from the new scheduling engine.
+
+        PagerDuty's shift-based schedules (the newer scheduling experience) only
+        ever show up under /v3/schedules, never in the classic /schedules list —
+        an account that migrated to it would otherwise see an empty picker
+        despite having schedules configured. Both endpoints share the same
+        offset/limit/more paging shape, so the existing paginate() helper covers
+        both without changes.
+        """
         api = self._api(credentials)
         try:
-            return [
+            classic = [
                 ScheduleRef(
                     external_id=item["id"],
                     name=item.get("name") or item.get("summary") or item["id"],
@@ -76,8 +97,31 @@ class PagerDutyProvider:
                 )
                 async for item in api.paginate("/schedules", "schedules")
             ]
+            shift_based = await self._list_v3_schedules(api)
         finally:
             await api.aclose()
+
+        seen = {ref.external_id for ref in classic}
+        return classic + [ref for ref in shift_based if ref.external_id not in seen]
+
+    async def _list_v3_schedules(self, api: PagerDutyClient) -> list[ScheduleRef]:
+        try:
+            return [
+                ScheduleRef(
+                    external_id=item["id"],
+                    # The v3 list endpoint returns lightweight references only —
+                    # no time_zone or description, unlike the classic resource.
+                    name=item.get("summary") or item["id"],
+                    timezone="UTC",
+                    html_url=item.get("html_url"),
+                )
+                async for item in api.paginate("/v3/schedules", "schedules")
+            ]
+        except (ProviderAuthError, ProviderError) as exc:
+            # Accounts that never enabled shift-based scheduling don't have
+            # this endpoint; that's not a reason to fail the whole listing.
+            log.info("pagerduty.v3_schedules_unavailable", error=str(exc))
+            return []
 
     async def get_oncall_window(
         self, credentials: Credentials, schedule_id: str, since: datetime, until: datetime

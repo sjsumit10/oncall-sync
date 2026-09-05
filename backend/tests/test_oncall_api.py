@@ -18,6 +18,7 @@ PD = "/api/v1/oncall"
 
 
 def mock_verify(total: int = 3) -> respx.Route:
+    respx.get(f"{API}/v3/schedules").mock(return_value=httpx.Response(200, json=schedules_page([])))
     return respx.get(f"{API}/schedules").mock(
         return_value=httpx.Response(200, json=schedules_page([], more=False) | {"total": total})
     )
@@ -153,6 +154,7 @@ async def test_schedules_are_fetched_on_first_use_then_served_from_cache(
             200, json=schedules_page([schedule("P1", "Primary"), schedule("P2", "Secondary")])
         )
     )
+    respx.get(f"{API}/v3/schedules").mock(return_value=httpx.Response(200, json=schedules_page([])))
 
     first = await client.get(f"{PD}/connections/{connection['id']}/schedules")
     assert [s["name"] for s in first.json()] == ["Primary", "Secondary"]
@@ -183,6 +185,7 @@ async def test_refresh_prunes_schedules_deleted_upstream(client: AsyncClient) ->
             httpx.Response(200, json=schedules_page([schedule("P1", "Primary renamed")])),
         ]
     )
+    respx.get(f"{API}/v3/schedules").mock(return_value=httpx.Response(200, json=schedules_page([])))
 
     await client.get(f"{PD}/connections/{connection['id']}/schedules")
     after = await client.get(f"{PD}/connections/{connection['id']}/schedules?refresh=true")

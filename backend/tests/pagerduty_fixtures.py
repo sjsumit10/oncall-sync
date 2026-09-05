@@ -21,6 +21,18 @@ def schedules_page(items: list[dict[str, Any]], *, more: bool = False) -> dict[s
     return {"schedules": items, "limit": 100, "offset": 0, "more": more, "total": len(items)}
 
 
+def schedule_v3(external_id: str, name: str) -> dict[str, Any]:
+    """A v3 schedule reference — the shift-based list endpoint returns only
+    id/summary/urls, no time_zone or description."""
+    return {
+        "id": external_id,
+        "type": "schedule_v3_reference",
+        "summary": name,
+        "self": f"{API}/v3/schedules/{external_id}",
+        "html_url": f"https://acme.pagerduty.com/schedules/{external_id}",
+    }
+
+
 def oncall(
     user_id: str,
     name: str,

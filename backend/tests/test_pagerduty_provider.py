@@ -10,7 +10,14 @@ import respx
 from app.core.http import ProviderAuthError, ProviderError
 from app.domain.types import AuthMode, Credentials
 from app.providers.oncall.pagerduty.provider import PagerDutyProvider
-from tests.pagerduty_fixtures import API, oncall, oncalls_page, schedule, schedules_page
+from tests.pagerduty_fixtures import (
+    API,
+    oncall,
+    oncalls_page,
+    schedule,
+    schedule_v3,
+    schedules_page,
+)
 
 CREDS = Credentials(org_id=uuid.uuid4(), auth_mode=AuthMode.API_KEY, token="pd-key")
 WINDOW_START = datetime(2026, 8, 24, tzinfo=UTC)
@@ -22,6 +29,7 @@ async def test_api_key_uses_the_token_scheme() -> None:
     route = respx.get(f"{API}/schedules").mock(
         return_value=httpx.Response(200, json=schedules_page([]))
     )
+    respx.get(f"{API}/v3/schedules").mock(return_value=httpx.Response(200, json=schedules_page([])))
     await PagerDutyProvider().verify(CREDS)
 
     assert route.calls.last.request.headers["Authorization"] == "Token token=pd-key"
@@ -33,6 +41,7 @@ async def test_oauth_uses_the_bearer_scheme() -> None:
     route = respx.get(f"{API}/schedules").mock(
         return_value=httpx.Response(200, json=schedules_page([]))
     )
+    respx.get(f"{API}/v3/schedules").mock(return_value=httpx.Response(200, json=schedules_page([])))
     creds = Credentials(org_id=uuid.uuid4(), auth_mode=AuthMode.OAUTH, token="access-token")
     await PagerDutyProvider().verify(creds)
 
@@ -49,11 +58,44 @@ async def test_list_schedules_follows_pagination() -> None:
             ),
         ]
     )
+    respx.get(f"{API}/v3/schedules").mock(return_value=httpx.Response(200, json=schedules_page([])))
     schedules = await PagerDutyProvider().list_schedules(CREDS)
 
     assert [s.external_id for s in schedules] == ["P1", "P2"]
     assert schedules[1].timezone == "Europe/Berlin"
     assert schedules[0].html_url == "https://acme.pagerduty.com/schedules/P1"
+
+
+@respx.mock
+async def test_list_schedules_merges_shift_based_schedules() -> None:
+    respx.get(f"{API}/schedules").mock(
+        return_value=httpx.Response(200, json=schedules_page([schedule("P1", "Classic")]))
+    )
+    respx.get(f"{API}/v3/schedules").mock(
+        side_effect=[
+            httpx.Response(
+                200, json=schedules_page([schedule_v3("PV1", "Shift-based")], more=True)
+            ),
+            httpx.Response(200, json=schedules_page([schedule_v3("PV2", "Shift-based 2")])),
+        ]
+    )
+    schedules = await PagerDutyProvider().list_schedules(CREDS)
+
+    assert [s.external_id for s in schedules] == ["P1", "PV1", "PV2"]
+    assert schedules[1].name == "Shift-based"
+    assert schedules[1].timezone == "UTC"
+
+
+@respx.mock
+async def test_list_schedules_tolerates_v3_endpoint_being_unavailable() -> None:
+    """Accounts without shift-based scheduling enabled don't have /v3/schedules."""
+    respx.get(f"{API}/schedules").mock(
+        return_value=httpx.Response(200, json=schedules_page([schedule("P1", "Classic")]))
+    )
+    respx.get(f"{API}/v3/schedules").mock(return_value=httpx.Response(404, json={}))
+    schedules = await PagerDutyProvider().list_schedules(CREDS)
+
+    assert [s.external_id for s in schedules] == ["P1"]
 
 
 @respx.mock
@@ -122,6 +164,7 @@ async def test_rate_limit_is_retried_then_succeeds() -> None:
             httpx.Response(200, json=schedules_page([schedule("P1", "Primary")])),
         ]
     )
+    respx.get(f"{API}/v3/schedules").mock(return_value=httpx.Response(200, json=schedules_page([])))
     schedules = await PagerDutyProvider().list_schedules(CREDS)
 
     assert route.call_count == 2

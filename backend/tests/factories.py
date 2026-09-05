@@ -17,6 +17,9 @@ async def connect_pagerduty(client: AsyncClient) -> dict[str, Any]:
     respx.get(f"{PD_API}/schedules").mock(
         return_value=httpx.Response(200, json=schedules_page([]) | {"total": 1})
     )
+    respx.get(f"{PD_API}/v3/schedules").mock(
+        return_value=httpx.Response(200, json=schedules_page([]))
+    )
     response = await client.post(
         "/api/v1/oncall/connections",
         json={"kind": "pagerduty", "api_key": "pd-secret-key", "display_name": "Acme PD"},
@@ -51,6 +54,9 @@ async def cache_pickers(
         return_value=httpx.Response(
             200, json=schedules_page([schedule("PSCHED1", "Primary", "UTC")])
         )
+    )
+    respx.get(f"{PD_API}/v3/schedules").mock(
+        return_value=httpx.Response(200, json=schedules_page([]))
     )
     await client.get(f"/api/v1/oncall/connections/{oncall_connection_id}/schedules?refresh=true")
 
