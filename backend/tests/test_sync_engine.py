@@ -6,6 +6,7 @@ people actually changed. Repairing a hand-edited group must never announce a
 handoff that did not happen.
 """
 
+import uuid
 from datetime import UTC, datetime, timedelta
 from urllib.parse import parse_qs
 
@@ -14,8 +15,12 @@ import pytest
 import respx
 from httpx import AsyncClient
 from pydantic import SecretStr
+from sqlalchemy import func, select
 
 from app.config import get_settings
+from app.db.models import SyncRun
+from app.db.session import SessionLocal, set_current_org
+from app.services.sync_engine import MAX_RUNS_PER_RULE
 from tests.conftest import csrf
 from tests.factories import connected_org, rule_payload
 from tests.pagerduty_fixtures import API as PD_API
@@ -350,6 +355,31 @@ async def test_runs_are_listed_newest_first(client: AsyncClient) -> None:
     assert len(runs) == 2
     assert runs[0]["started_at"] >= runs[1]["started_at"]
     assert {run["trigger"] for run in runs} == {"manual"}
+
+
+@respx.mock
+async def test_run_history_is_pruned_to_the_most_recent(client: AsyncClient) -> None:
+    rule = await make_rule(client)
+    mock_oncall([oncall("PU1", "Ada", "ada@acme.dev", stamp(-2), stamp(6))])
+    mock_lookup(DIRECTORY)
+    mock_group(["U_ADA"])  # already correct — every sync is a cheap no-op write
+    mock_update()
+    mock_post()  # only the first sync announces, but the route must still exist
+
+    for _ in range(MAX_RUNS_PER_RULE + 5):
+        await sync(client, rule["id"])
+
+    org_id = (await client.get("/api/v1/auth/me")).json()["organization"]["id"]
+    set_current_org(org_id)
+    async with SessionLocal() as db:
+        count = await db.scalar(
+            select(func.count(SyncRun.id)).where(SyncRun.rule_id == uuid.UUID(rule["id"]))
+        )
+    assert count == MAX_RUNS_PER_RULE
+
+    # The default page still returns the newer, smaller UI window.
+    default_page = (await client.get(f"{RULES}/{rule['id']}/runs")).json()
+    assert len(default_page) == 20
 
 
 @respx.mock

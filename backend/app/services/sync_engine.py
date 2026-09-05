@@ -23,7 +23,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
 import structlog
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
@@ -56,6 +56,8 @@ FAILURE_BACKOFF_BASE = timedelta(seconds=30)
 FAILURE_BACKOFF_CAP = timedelta(minutes=30)
 #: Spread simultaneous handoffs so a shared rotation boundary does not stampede.
 MAX_JITTER_SECONDS = 30
+#: Run history is an audit trail, not an archive — keep it from growing unbounded.
+MAX_RUNS_PER_RULE = 100
 
 
 @dataclass(slots=True)
@@ -130,6 +132,17 @@ def _message_context(
     )
 
 
+async def _prune_old_runs(db: AsyncSession, rule_id: uuid.UUID) -> None:
+    """Delete everything past the MAX_RUNS_PER_RULE most recent runs for this rule."""
+    stale_ids = (
+        select(SyncRun.id)
+        .where(SyncRun.rule_id == rule_id)
+        .order_by(SyncRun.started_at.desc())
+        .offset(MAX_RUNS_PER_RULE)
+    )
+    await db.execute(delete(SyncRun).where(SyncRun.id.in_(stale_ids)))
+
+
 async def reconcile(
     db: AsyncSession, rule: SyncRule, *, trigger: RunTrigger, at: datetime | None = None
 ) -> SyncRun:
@@ -176,6 +189,7 @@ async def reconcile(
         error=result.error,
     )
     db.add(run)
+    await _prune_old_runs(db, rule.id)
     await db.commit()
 
     log.info(

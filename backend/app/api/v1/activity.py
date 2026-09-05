@@ -19,7 +19,7 @@ async def list_activity(
     db: DbSession,
     rule_id: uuid.UUID | None = None,
     status: RunStatus | None = None,
-    limit: int = Query(default=50, le=200),
+    limit: int = Query(default=20, le=200),
 ) -> list[ActivityRunOut]:
     """Every rule's runs, newest first.
 

@@ -303,7 +303,7 @@ async def sync_now(rule_id: uuid.UUID, db: DbSession, actor: User = RequireManag
 
 @router.get("/{rule_id}/runs", response_model=list[SyncRunOut])
 async def list_runs(
-    rule_id: uuid.UUID, user: CurrentUser, db: DbSession, limit: int = 25
+    rule_id: uuid.UUID, user: CurrentUser, db: DbSession, limit: int = 20
 ) -> list[SyncRun]:
     scope = OrgScope(db, user.org_id)
     if await scope.get(SyncRule, rule_id) is None:
