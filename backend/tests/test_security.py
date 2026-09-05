@@ -148,6 +148,16 @@ class TestAuthAbuse:
             )
         assert "Too many attempts" in response.json()["detail"]
 
+    async def test_signup_is_throttled(self, client: AsyncClient) -> None:
+        for _ in range(7):
+            response = await client.post(
+                "/api/v1/auth/signup",
+                json={"name": "Ada", "email": "owner@acme.dev", "password": "a-long-password-1"},
+                headers=csrf(client),
+            )
+        assert response.status_code == 429
+        assert "Too many attempts" in response.json()["detail"]
+
     async def test_a_wrong_password_and_an_unknown_email_look_the_same(
         self, client: AsyncClient
     ) -> None:

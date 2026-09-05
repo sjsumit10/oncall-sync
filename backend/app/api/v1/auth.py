@@ -10,7 +10,7 @@ from app.api.v1.schemas import OrganizationOut, Password, SessionOut, UserOut
 from app.core import ratelimit
 from app.core.cookies import clear_auth_cookies, set_auth_cookies
 from app.core.deps import CurrentUser, DbSession, RedisClient
-from app.core.errors import Unauthorized
+from app.core.errors import TooManyRequests, Unauthorized
 from app.core.sessions import SESSION_COOKIE, create_session, delete_session
 from app.db.models import Organization
 from app.services import accounts
@@ -19,6 +19,19 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 LOGIN_ATTEMPT_LIMIT = 10
 LOGIN_WINDOW_SECONDS = 900
+
+#: Stricter than login: a real user signs up once, so repeated attempts from
+#: one source are either a mistake worth a short wait or a scripted mass
+#: account/org creation attempt, not someone retrying a mistyped password.
+SIGNUP_ATTEMPT_LIMIT = 5
+SIGNUP_WINDOW_SECONDS = 900
+
+
+async def _throttle(redis: RedisClient, *keys: str, limit: int, window_seconds: int) -> None:
+    for key in keys:
+        result = await ratelimit.hit(redis, key, limit=limit, window_seconds=window_seconds)
+        if not result.allowed:
+            raise TooManyRequests()
 
 
 class SignupIn(BaseModel):
@@ -48,8 +61,17 @@ async def _start_session(
 
 @router.post("/signup", response_model=SessionOut, status_code=status.HTTP_201_CREATED)
 async def signup(
-    payload: SignupIn, response: Response, db: DbSession, redis: RedisClient
+    payload: SignupIn, request: Request, response: Response, db: DbSession, redis: RedisClient
 ) -> SessionOut:
+    client = request.client.host if request.client else "unknown"
+    await _throttle(
+        redis,
+        f"signup:email:{payload.email.lower()}",
+        f"signup:ip:{client}",
+        limit=SIGNUP_ATTEMPT_LIMIT,
+        window_seconds=SIGNUP_WINDOW_SECONDS,
+    )
+
     org, owner = await accounts.create_organization_with_owner(
         db,
         name=payload.name,
