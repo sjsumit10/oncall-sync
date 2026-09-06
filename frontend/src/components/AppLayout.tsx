@@ -22,7 +22,7 @@ import { useLogout, useSession } from "@/lib/auth";
 import { cn } from "@/lib/utils";
 
 const NAV = [
-  { to: "/", label: "Overview", end: true, icon: LayoutDashboard },
+  { to: "/overview", label: "Overview", end: true, icon: LayoutDashboard },
   { to: "/rules", label: "Rules", end: false, icon: Workflow },
   { to: "/activity", label: "Activity", end: false, icon: ActivityIcon },
   { to: "/connections", label: "Connections", end: false, icon: Plug },

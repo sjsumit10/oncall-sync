@@ -28,7 +28,7 @@ afterEach(() => vi.unstubAllGlobals());
 describe("routing", () => {
   it("redirects an unauthenticated visitor from a protected route to login", async () => {
     stubSession(401, { detail: "Not authenticated" });
-    renderAt("/");
+    renderAt("/overview");
 
     expect(await screen.findByRole("heading", { name: "Welcome back" })).toBeDefined();
   });
@@ -46,7 +46,7 @@ describe("routing", () => {
       organization: { id: "o1", name: "Acme", slug: "acme" },
       csrf_token: "token",
     });
-    renderAt("/");
+    renderAt("/overview");
 
     expect(await screen.findByText("Welcome, Ada")).toBeDefined();
     expect(screen.getByText(/Acme/)).toBeDefined();
@@ -57,5 +57,33 @@ describe("routing", () => {
     renderAt("/signup");
 
     expect(await screen.findByRole("heading", { name: "Create your account" })).toBeDefined();
+  });
+
+  it("shows the public landing page at / without requiring a session", async () => {
+    stubSession(401, { detail: "Not authenticated" });
+    renderAt("/");
+
+    expect(await screen.findByRole("heading", { name: /one mention away/ })).toBeDefined();
+    expect(screen.getByRole("link", { name: "Log in" })).toBeDefined();
+    expect(screen.getByRole("link", { name: "Sign Up" })).toBeDefined();
+  });
+
+  it("offers a dashboard link on the landing page for an authenticated visitor", async () => {
+    stubSession(200, {
+      user: {
+        id: "u1",
+        email: "ada@acme.dev",
+        name: "Ada Lovelace",
+        role: "owner",
+        is_active: true,
+        created_at: new Date().toISOString(),
+      },
+      organization: { id: "o1", name: "Acme", slug: "acme" },
+      csrf_token: "token",
+    });
+    renderAt("/");
+
+    expect(await screen.findByRole("link", { name: "Dashboard" })).toBeDefined();
+    expect(screen.queryByRole("link", { name: "Log in" })).toBeNull();
   });
 });

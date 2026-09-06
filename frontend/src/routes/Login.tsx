@@ -18,7 +18,7 @@ export default function Login() {
   const [password, setPassword] = useState("");
 
   if (session) {
-    const from = (location.state as { from?: string } | null)?.from ?? "/";
+    const from = (location.state as { from?: string } | null)?.from ?? "/overview";
     return <Navigate to={from} replace />;
   }
 

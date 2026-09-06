@@ -15,7 +15,7 @@ export default function AcceptInvite() {
   const [password, setPassword] = useState("");
 
   // Landing here already signed in means the invite is for a different person.
-  if (session && accept.isSuccess) return <Navigate to="/" replace />;
+  if (session && accept.isSuccess) return <Navigate to="/overview" replace />;
 
   return (
     <AuthShell title="Join the team" description="Set your name and a password to get started.">

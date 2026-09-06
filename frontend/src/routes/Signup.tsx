@@ -16,7 +16,7 @@ export default function Signup() {
     password: "",
   });
 
-  if (session) return <Navigate to="/" replace />;
+  if (session) return <Navigate to="/overview" replace />;
 
   const update = (key: keyof typeof form) => (event: React.ChangeEvent<HTMLInputElement>) =>
     setForm({ ...form, [key]: event.target.value });

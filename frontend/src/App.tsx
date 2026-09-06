@@ -6,6 +6,7 @@ import AcceptInvite from "@/routes/AcceptInvite";
 import Activity from "@/routes/Activity";
 import Connections from "@/routes/Connections";
 import Identities from "@/routes/Identities";
+import Landing from "@/routes/Landing";
 import Login from "@/routes/Login";
 import Overview from "@/routes/Overview";
 import RuleBuilder from "@/routes/RuleBuilder";
@@ -16,6 +17,7 @@ import Signup from "@/routes/Signup";
 export default function App() {
   return (
     <Routes>
+      <Route path="/" element={<Landing />} />
       <Route path="/login" element={<Login />} />
       <Route path="/signup" element={<Signup />} />
       <Route path="/invite/:token" element={<AcceptInvite />} />
@@ -26,7 +28,7 @@ export default function App() {
           </RequireAuth>
         }
       >
-        <Route path="/" element={<Overview />} />
+        <Route path="/overview" element={<Overview />} />
         <Route path="/connections" element={<Connections />} />
         <Route path="/rules" element={<Rules />} />
         <Route path="/rules/new" element={<RuleBuilder />} />
