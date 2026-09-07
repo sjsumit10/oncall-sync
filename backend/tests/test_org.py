@@ -160,3 +160,19 @@ async def test_removing_a_member_revokes_their_session(
     )
     assert removed.status_code == 204
     assert (await invitee.get("/api/v1/auth/me")).status_code == 401
+
+
+async def test_admin_cannot_remove_an_owner(client: AsyncClient, invitee: AsyncClient) -> None:
+    owner = await signup(client)
+    created = await invite(client, "bob@acme.dev", role="admin")
+    await invitee.post(
+        "/api/v1/auth/invites/accept",
+        json={"token": token_from(created), "name": "Bob", "password": "another-long-password"},
+    )
+
+    response = await invitee.request(
+        "DELETE", f"/api/v1/org/members/{owner['user']['id']}", headers=csrf(invitee)
+    )
+    assert response.status_code == 403
+    # The owner is untouched — still there, still able to act.
+    assert (await client.get("/api/v1/auth/me")).status_code == 200
