@@ -9,6 +9,7 @@ import Identities from "@/routes/Identities";
 import Landing from "@/routes/Landing";
 import Login from "@/routes/Login";
 import Overview from "@/routes/Overview";
+import Plans from "@/routes/Plans";
 import RuleBuilder from "@/routes/RuleBuilder";
 import Rules from "@/routes/Rules";
 import Settings from "@/routes/Settings";
@@ -33,6 +34,7 @@ export default function App() {
         <Route path="/rules" element={<Rules />} />
         <Route path="/rules/new" element={<RuleBuilder />} />
         <Route path="/identities" element={<Identities />} />
+        <Route path="/plans" element={<Plans />} />
         <Route path="/activity" element={<Activity />} />
         <Route path="/settings" element={<Settings />} />
       </Route>

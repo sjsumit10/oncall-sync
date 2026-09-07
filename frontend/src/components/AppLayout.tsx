@@ -1,6 +1,7 @@
 import {
   Activity as ActivityIcon,
   ChevronsUpDown,
+  CreditCard,
   LayoutDashboard,
   LogOut,
   Plug,
@@ -27,6 +28,7 @@ const NAV = [
   { to: "/activity", label: "Activity", end: false, icon: ActivityIcon },
   { to: "/connections", label: "Connections", end: false, icon: Plug },
   { to: "/identities", label: "Identities", end: false, icon: Users },
+  { to: "/plans", label: "Plans", end: false, icon: CreditCard },
   { to: "/settings", label: "Settings", end: false, icon: SettingsIcon },
 ];
 

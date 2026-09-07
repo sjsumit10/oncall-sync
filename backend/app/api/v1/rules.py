@@ -169,6 +169,8 @@ async def preview_message(
 
 @router.post("", response_model=SyncRuleOut, status_code=status.HTTP_201_CREATED)
 async def create_rule(payload: RuleIn, db: DbSession, actor: User = RequireManager) -> SyncRule:
+    await sync_rules.assert_within_plan_limit(db, actor.org_id)
+
     await sync_rules.validate_targets(
         db,
         org_id=actor.org_id,

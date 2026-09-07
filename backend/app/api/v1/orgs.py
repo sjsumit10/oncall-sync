@@ -4,13 +4,31 @@ import uuid
 
 from fastapi import APIRouter, Depends, status
 from pydantic import BaseModel, EmailStr, Field
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.v1.schemas import InviteCreatedOut, InviteOut, OrganizationOut, UserOut
+from app.api.v1.schemas import (
+    InviteCreatedOut,
+    InviteOut,
+    OrganizationOut,
+    PlanInfoOut,
+    PlanTierOut,
+    UserOut,
+)
 from app.config import get_settings
 from app.core.deps import CurrentUser, DbSession, RedisClient, require_role
 from app.core.errors import BadRequest, Forbidden, NotFound
 from app.core.sessions import delete_user_sessions
-from app.db.models import MANAGER_ROLES, Invite, Organization, User, UserRole
+from app.db.models import (
+    MANAGER_ROLES,
+    PLAN_RULE_LIMITS,
+    Invite,
+    Organization,
+    OrgPlan,
+    SyncRule,
+    User,
+    UserRole,
+)
 from app.db.repository import OrgScope
 from app.services import accounts
 
@@ -33,6 +51,10 @@ class OrganizationUpdateIn(BaseModel):
     name: str = Field(min_length=2, max_length=120)
 
 
+class PlanUpdateIn(BaseModel):
+    plan: OrgPlan
+
+
 @router.get("", response_model=OrganizationOut)
 async def get_organization(user: CurrentUser, db: DbSession) -> Organization:
     org = await db.get(Organization, user.org_id)
@@ -51,6 +73,50 @@ async def update_organization(
     org = await accounts.rename_organization(db, org=org, name=payload.name)
     await db.commit()
     return org
+
+
+async def _rule_count(db: AsyncSession, org_id: uuid.UUID) -> int:
+    count = await db.scalar(select(func.count(SyncRule.id)).where(SyncRule.org_id == org_id))
+    return count or 0
+
+
+def _plan_info(org: Organization, rule_count: int) -> PlanInfoOut:
+    tiers = [PlanTierOut(plan=plan, rule_limit=limit) for plan, limit in PLAN_RULE_LIMITS.items()]
+    return PlanInfoOut(
+        plan=org.plan,
+        rule_limit=PLAN_RULE_LIMITS[org.plan],
+        rule_count=rule_count,
+        tiers=tiers,
+    )
+
+
+@router.get("/plan", response_model=PlanInfoOut)
+async def get_plan(user: CurrentUser, db: DbSession) -> PlanInfoOut:
+    org = await db.get(Organization, user.org_id)
+    if org is None:
+        raise NotFound("Organization not found")
+    return _plan_info(org, await _rule_count(db, user.org_id))
+
+
+@router.patch("/plan", response_model=PlanInfoOut)
+async def update_plan(
+    payload: PlanUpdateIn, db: DbSession, actor: User = RequireOwner
+) -> PlanInfoOut:
+    org = await db.get(Organization, actor.org_id)
+    if org is None:
+        raise NotFound("Organization not found")
+
+    count = await _rule_count(db, actor.org_id)
+    new_limit = PLAN_RULE_LIMITS[payload.plan]
+    if count > new_limit:
+        raise BadRequest(
+            f"You have {count} sync rules, which is more than the {payload.plan.value} "
+            f"plan's limit of {new_limit}. Remove some rules before downgrading."
+        )
+
+    org.plan = payload.plan
+    await db.commit()
+    return _plan_info(org, count)
 
 
 @router.get("/members", response_model=list[UserOut])

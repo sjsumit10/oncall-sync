@@ -11,17 +11,19 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
 import structlog
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
-from app.core.errors import BadRequest, NotFound
+from app.core.errors import BadRequest, Forbidden, NotFound
 from app.db.models import (
+    PLAN_RULE_LIMITS,
     ChatChannel,
     ChatConnection,
     ChatGroup,
     OncallConnection,
     OncallSchedule,
+    Organization,
     SyncRule,
 )
 from app.domain.registry import get_chat_provider, get_oncall_provider
@@ -161,6 +163,21 @@ async def current_group_members(db: AsyncSession, rule: SyncRule) -> list[str]:
     return await get_chat_provider(chat_connection.kind).get_group_members(
         credentials, rule.group_external_id
     )
+
+
+async def assert_within_plan_limit(db: AsyncSession, org_id: uuid.UUID) -> None:
+    """Refuse a new rule once the org's plan quota is used up."""
+    org = await db.get(Organization, org_id)
+    if org is None:
+        raise NotFound("Organization not found")
+
+    limit = PLAN_RULE_LIMITS[org.plan]
+    count = await db.scalar(select(func.count(SyncRule.id)).where(SyncRule.org_id == org_id))
+    if (count or 0) >= limit:
+        raise Forbidden(
+            f"Your {org.plan.value} plan allows up to {limit} sync rules. "
+            "Upgrade to create more."
+        )
 
 
 async def validate_targets(

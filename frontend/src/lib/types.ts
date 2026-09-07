@@ -14,10 +14,25 @@ export interface User {
   created_at: string;
 }
 
+export type OrgPlan = "free" | "starter" | "premium";
+
 export interface Organization {
   id: string;
   name: string;
   slug: string;
+  plan: OrgPlan;
+}
+
+export interface PlanTier {
+  plan: OrgPlan;
+  rule_limit: number;
+}
+
+export interface PlanInfo {
+  plan: OrgPlan;
+  rule_limit: number;
+  rule_count: number;
+  tiers: PlanTier[];
 }
 
 export interface Session {

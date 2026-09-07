@@ -7,7 +7,7 @@ from typing import Annotated, Any
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 from app.core.security import MIN_PASSWORD_LENGTH
-from app.db.models import UserRole
+from app.db.models import OrgPlan, UserRole
 
 #: Applied to every password field so the policy lives in exactly one place.
 Password = Annotated[str, Field(min_length=MIN_PASSWORD_LENGTH, max_length=256)]
@@ -19,6 +19,19 @@ class OrganizationOut(BaseModel):
     id: uuid.UUID
     name: str
     slug: str
+    plan: OrgPlan
+
+
+class PlanTierOut(BaseModel):
+    plan: OrgPlan
+    rule_limit: int
+
+
+class PlanInfoOut(BaseModel):
+    plan: OrgPlan
+    rule_limit: int
+    rule_count: int
+    tiers: list[PlanTierOut]
 
 
 class UserOut(BaseModel):

@@ -10,9 +10,18 @@ from app.config import get_settings
 from tests.conftest import csrf, signup
 from tests.factories import cache_pickers, connected_org, rule_payload
 from tests.slack_fixtures import API as SLACK_API
-from tests.slack_fixtures import channel, ok
+from tests.slack_fixtures import channel, ok, usergroup
 
 RULES = "/api/v1/rules"
+
+
+async def seed_groups(client: AsyncClient, chat_connection_id: str, count: int) -> None:
+    """Populate the group picker cache with `count` distinct, creatable groups."""
+    groups = [usergroup(f"S_G{i}", f"group-{i}", f"Group {i}") for i in range(count)]
+    respx.post(f"{SLACK_API}/usergroups.list").mock(
+        return_value=httpx.Response(200, json=ok(usergroups=groups))
+    )
+    await client.get(f"/api/v1/chat/connections/{chat_connection_id}/groups?refresh=true")
 
 
 @pytest.fixture(autouse=True)
@@ -229,3 +238,116 @@ async def test_a_channel_refresh_makes_a_previously_refused_rule_valid(
     assert (
         await client.post(RULES, json=rule_payload(ids), headers=csrf(client))
     ).status_code == 201
+
+
+@respx.mock
+async def test_free_plan_limits_rule_creation(client: AsyncClient) -> None:
+    ids = await connected_org(client)
+    await seed_groups(client, ids["chat_connection_id"], 6)
+
+    for i in range(5):
+        response = await client.post(
+            RULES,
+            json=rule_payload(ids, name=f"Rule {i}", group_external_id=f"S_G{i}"),
+            headers=csrf(client),
+        )
+        assert response.status_code == 201, response.text
+
+    response = await client.post(
+        RULES,
+        json=rule_payload(ids, name="Rule 6", group_external_id="S_G5"),
+        headers=csrf(client),
+    )
+    assert response.status_code == 403
+    assert "free plan allows up to 5" in response.json()["detail"]
+
+
+@respx.mock
+async def test_upgrading_the_plan_raises_the_rule_limit(client: AsyncClient) -> None:
+    ids = await connected_org(client)
+    await seed_groups(client, ids["chat_connection_id"], 6)
+    for i in range(5):
+        await client.post(
+            RULES,
+            json=rule_payload(ids, name=f"Rule {i}", group_external_id=f"S_G{i}"),
+            headers=csrf(client),
+        )
+
+    upgraded = await client.patch(
+        "/api/v1/org/plan", json={"plan": "starter"}, headers=csrf(client)
+    )
+    assert upgraded.status_code == 200, upgraded.text
+    assert upgraded.json() == {
+        "plan": "starter",
+        "rule_limit": 100,
+        "rule_count": 5,
+        "tiers": [
+            {"plan": "free", "rule_limit": 5},
+            {"plan": "starter", "rule_limit": 100},
+            {"plan": "premium", "rule_limit": 500},
+        ],
+    }
+
+    response = await client.post(
+        RULES,
+        json=rule_payload(ids, name="Rule 6", group_external_id="S_G5"),
+        headers=csrf(client),
+    )
+    assert response.status_code == 201, response.text
+
+
+@respx.mock
+async def test_member_cannot_change_plan(client: AsyncClient, invitee: AsyncClient) -> None:
+    await connected_org(client)
+    created = await client.post(
+        "/api/v1/org/invites", json={"email": "bob@acme.dev"}, headers=csrf(client)
+    )
+    token = str(created.json()["accept_url"]).rsplit("/", 1)[-1]
+    await invitee.post(
+        "/api/v1/auth/invites/accept",
+        json={"token": token, "name": "Bob", "password": "another-long-password"},
+    )
+
+    response = await invitee.patch(
+        "/api/v1/org/plan", json={"plan": "starter"}, headers=csrf(invitee)
+    )
+    assert response.status_code == 403
+
+
+@respx.mock
+async def test_plan_cannot_be_downgraded_below_current_rule_count(client: AsyncClient) -> None:
+    ids = await connected_org(client)
+    await seed_groups(client, ids["chat_connection_id"], 6)
+    await client.patch("/api/v1/org/plan", json={"plan": "starter"}, headers=csrf(client))
+    for i in range(6):
+        await client.post(
+            RULES,
+            json=rule_payload(ids, name=f"Rule {i}", group_external_id=f"S_G{i}"),
+            headers=csrf(client),
+        )
+
+    response = await client.patch("/api/v1/org/plan", json={"plan": "free"}, headers=csrf(client))
+    assert response.status_code == 400
+    assert "more than the free plan's limit" in response.json()["detail"]
+
+
+@respx.mock
+async def test_get_plan_reports_usage_and_available_tiers(client: AsyncClient) -> None:
+    ids = await connected_org(client)
+    await seed_groups(client, ids["chat_connection_id"], 1)
+    await client.post(
+        RULES, json=rule_payload(ids, group_external_id="S_G0"), headers=csrf(client)
+    )
+
+    response = await client.get("/api/v1/org/plan")
+    assert response.status_code == 200, response.text
+    assert response.json() == {
+        "plan": "free",
+        "rule_limit": 5,
+        "rule_count": 1,
+        "tiers": [
+            {"plan": "free", "rule_limit": 5},
+            {"plan": "starter", "rule_limit": 100},
+            {"plan": "premium", "rule_limit": 500},
+        ],
+    }
