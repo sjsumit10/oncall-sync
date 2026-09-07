@@ -141,6 +141,32 @@ async def test_members_cannot_manage_connections(client: AsyncClient, invitee: A
 
 
 @respx.mock
+async def test_members_cannot_refresh_schedules(client: AsyncClient, invitee: AsyncClient) -> None:
+    await signup(client)
+    mock_verify()
+    connection = await connect_api_key(client)
+    created = await client.post(
+        "/api/v1/org/invites", json={"email": "bob@acme.dev"}, headers=csrf(client)
+    )
+    token = str(created.json()["accept_url"]).rsplit("/", 1)[-1]
+    await invitee.post(
+        "/api/v1/auth/invites/accept",
+        json={"token": token, "name": "Bob", "password": "another-long-password"},
+    )
+
+    explicit = await invitee.get(f"{PD}/connections/{connection['id']}/schedules?refresh=true")
+    assert explicit.status_code == 403
+
+    # Nothing has ever been synced. A manager landing here would trigger the
+    # fetch; a member must not — no route is mocked below, so any provider
+    # call would fail the test outright rather than silently succeeding.
+    respx.reset()
+    unsynced = await invitee.get(f"{PD}/connections/{connection['id']}/schedules")
+    assert unsynced.status_code == 200
+    assert unsynced.json() == []
+
+
+@respx.mock
 async def test_schedules_are_fetched_on_first_use_then_served_from_cache(
     client: AsyncClient,
 ) -> None:

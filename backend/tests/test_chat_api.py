@@ -209,6 +209,37 @@ async def test_members_cannot_install(client: AsyncClient, invitee: AsyncClient)
 
 
 @respx.mock
+async def test_members_cannot_refresh_groups_or_channels(
+    client: AsyncClient, invitee: AsyncClient, slack_app: None
+) -> None:
+    await signup(client)
+    connection = await install(client)
+    created = await client.post(
+        "/api/v1/org/invites", json={"email": "bob@acme.dev"}, headers=csrf(client)
+    )
+    token = str(created.json()["accept_url"]).rsplit("/", 1)[-1]
+    await invitee.post(
+        "/api/v1/auth/invites/accept",
+        json={"token": token, "name": "Bob", "password": "another-long-password"},
+    )
+
+    for resource in ("groups", "channels"):
+        explicit = await invitee.get(
+            f"{CHAT}/connections/{connection['id']}/{resource}?refresh=true"
+        )
+        assert explicit.status_code == 403
+
+    # Nothing has ever been synced. A manager landing here would trigger the
+    # fetch; a member must not — no route is mocked below, so any provider
+    # call would fail the test outright rather than silently succeeding.
+    respx.reset()
+    for resource in ("groups", "channels"):
+        unsynced = await invitee.get(f"{CHAT}/connections/{connection['id']}/{resource}")
+        assert unsynced.status_code == 200
+        assert unsynced.json() == []
+
+
+@respx.mock
 async def test_another_org_cannot_reach_the_workspace(
     client: AsyncClient, invitee: AsyncClient, slack_app: None
 ) -> None:

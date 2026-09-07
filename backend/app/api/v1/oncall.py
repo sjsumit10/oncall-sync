@@ -14,7 +14,7 @@ from app.api.v1.schemas import (
 )
 from app.config import get_settings
 from app.core.deps import CurrentUser, DbSession, RedisClient, require_role
-from app.core.errors import BadRequest, NotFound
+from app.core.errors import BadRequest, Forbidden, NotFound
 from app.core.oauth import generate_pkce_pair
 from app.core.sessions import SESSION_COOKIE, read_session
 from app.db.models import MANAGER_ROLES, OncallConnection, OncallSchedule, User
@@ -200,8 +200,13 @@ async def list_schedules(
     if connection is None:
         raise NotFound("Connection not found")
 
+    if refresh and user.role not in MANAGER_ROLES:
+        raise Forbidden("Only an owner or admin can refresh from the provider")
+
     # Fetch on first use so a freshly connected account is not an empty picker.
-    if refresh or connection.schedules_synced_at is None:
+    # A member landing here before any manager has warmed the cache just sees
+    # it empty rather than triggering the fetch themselves.
+    if (refresh or connection.schedules_synced_at is None) and user.role in MANAGER_ROLES:
         return await oncall_connections.sync_schedules(db, connection)
 
     return list(

@@ -16,7 +16,7 @@ from app.api.v1.schemas import (
 )
 from app.config import get_settings
 from app.core.deps import CurrentUser, DbSession, RedisClient, require_role
-from app.core.errors import BadRequest, NotFound
+from app.core.errors import BadRequest, Forbidden, NotFound
 from app.core.sessions import SESSION_COOKIE, read_session
 from app.db.models import MANAGER_ROLES, ChatChannel, ChatConnection, ChatGroup, User
 from app.db.repository import OrgScope
@@ -190,7 +190,10 @@ async def list_groups(
     if connection is None:
         raise NotFound("Workspace not found")
 
-    if refresh or connection.groups_synced_at is None:
+    if refresh and user.role not in MANAGER_ROLES:
+        raise Forbidden("Only an owner or admin can refresh from the provider")
+
+    if (refresh or connection.groups_synced_at is None) and user.role in MANAGER_ROLES:
         try:
             return await chat_connections.sync_groups(db, connection)
         except GroupsUnavailable as exc:
@@ -217,6 +220,9 @@ async def list_channels(
     if connection is None:
         raise NotFound("Workspace not found")
 
+    if refresh and user.role not in MANAGER_ROLES:
+        raise Forbidden("Only an owner or admin can refresh from the provider")
+
     cached = list(
         await db.scalars(
             scope.select(ChatChannel)
@@ -224,7 +230,7 @@ async def list_channels(
             .order_by(ChatChannel.name)
         )
     )
-    if refresh or not cached:
+    if (refresh or not cached) and user.role in MANAGER_ROLES:
         return await chat_connections.sync_channels(db, connection)
     return cached
 
