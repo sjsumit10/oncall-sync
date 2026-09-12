@@ -164,6 +164,6 @@ describe("RulePreviewPanel", () => {
         preview={{ ...BASE_PREVIEW, desired_member_ids: ["U_LEAD"], used_fallback: true }}
       />,
     );
-    expect(screen.getByText(/does not allow an empty user group/)).toBeDefined();
+    expect(screen.getByText(/an empty group is not allowed/)).toBeDefined();
   });
 });

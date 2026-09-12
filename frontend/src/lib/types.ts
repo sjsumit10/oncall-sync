@@ -110,10 +110,17 @@ export interface ChatConnection {
   scopes: string | null;
   /** False when no installer token is held — no fallback if the workspace locks down user groups. */
   has_user_token: boolean;
+  /** The selected Microsoft Team's id. Null for Slack, or for Teams before a Team is picked. */
+  external_resource_id: string | null;
   last_verified_at: string | null;
   last_error: string | null;
   groups_synced_at: string | null;
   created_at: string;
+}
+
+export interface AvailableTeam {
+  id: string;
+  name: string;
 }
 
 export interface ChatGroup {

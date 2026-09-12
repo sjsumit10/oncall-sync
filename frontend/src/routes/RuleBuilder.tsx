@@ -51,6 +51,8 @@ export default function RuleBuilder() {
   const schedules = useSchedules(oncallId || undefined);
   const groups = useGroups(chatId || undefined);
   const channels = useChannels(chatId || undefined);
+  const chatKind = chat.find((c) => c.id === chatId)?.kind;
+  const isTeams = chatKind === "teams";
 
   const create = useMutation({
     mutationFn: () =>
@@ -138,7 +140,11 @@ export default function RuleBuilder() {
                 value: g.external_id,
                 label: `@${g.handle} — ${g.name}`,
               }))}
-              empty="No user groups found. Create one in Slack, then refresh."
+              empty={
+                isTeams
+                  ? "No tags found. Create one in Teams, then refresh."
+                  : "No user groups found. Create one in Slack, then refresh."
+              }
             />
 
             <label className="flex items-center justify-between rounded-lg border border-border px-4 py-3">
@@ -173,12 +179,15 @@ export default function RuleBuilder() {
             <Field
               label="Fallback member (optional)"
               value={fallback}
-              placeholder="Slack user ID, e.g. U01ABCDEF"
+              placeholder={
+                isTeams ? "Microsoft user id, e.g. 3fa8...c4e5" : "Slack user ID, e.g. U01ABCDEF"
+              }
               onChange={(event) => setFallback(event.target.value)}
             />
             <p className="-mt-3 text-xs text-muted-foreground">
-              Used when nobody resolves to a chat account. Slack refuses to leave a user group
-              empty, so without this the handle is left unchanged instead.
+              Used when nobody resolves to a chat account. {isTeams ? "Teams" : "Slack"} refuses to
+              leave a {isTeams ? "tag" : "user group"} empty, so without this the handle is left
+              unchanged instead.
             </p>
 
             {selectedHandle && (

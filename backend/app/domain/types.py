@@ -91,11 +91,17 @@ class ChatCredentials:
     token works when management is open to everyone, and a user token from an
     authorized installer is required when it is restricted to admins. Both are
     captured at install so the write path can fall back instead of failing.
+
+    ``resource_id`` is for providers whose API is scoped one level below the
+    connection itself — Graph's tag/channel/message endpoints all hang off a
+    specific Team, not the whole tenant a Teams connection represents, unlike
+    Slack where the connection *is* the workspace. Slack leaves it None.
     """
 
     org_id: uuid.UUID
     bot_token: str
     user_token: str | None = None
+    resource_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -134,6 +140,9 @@ class ChatInstall:
     installing_user_external_id: str | None = None
     scopes: str | None = None
     user_scopes: str | None = None
+    #: Only set by providers whose token expires (Teams). Slack leaves both None.
+    refresh_token: str | None = None
+    token_expires_at: datetime | None = None
 
 
 @dataclass(frozen=True, slots=True)

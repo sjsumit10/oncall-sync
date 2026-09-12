@@ -37,6 +37,17 @@ class ChatConnection(Base, UUIDPrimaryKey, Timestamps):
         PgUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
 
+    #: Set only by providers whose token expires (Teams). Slack's bot token
+    #: never expires and leaves both of these NULL.
+    refresh_token_enc: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    token_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    #: The specific Team's Graph id, for providers where the connection covers
+    #: a whole tenant but the tag/channel/message APIs are scoped one level
+    #: below that (Teams). Slack's connection *is* the workspace, so NULL here.
+    external_resource_id: Mapped[str | None] = mapped_column(String(120), nullable=True)
+
     scopes: Mapped[str | None] = mapped_column(Text, nullable=True)
     user_scopes: Mapped[str | None] = mapped_column(Text, nullable=True)
 

@@ -8,6 +8,7 @@ from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 
 from app.api.v1.schemas import (
+    AvailableTeamOut,
     ChatChannelOut,
     ChatConnectionOut,
     ChatGroupOut,
@@ -17,6 +18,7 @@ from app.api.v1.schemas import (
 from app.config import get_settings
 from app.core.deps import CurrentUser, DbSession, RedisClient, require_role
 from app.core.errors import BadRequest, Forbidden, NotFound
+from app.core.oauth import generate_pkce_pair
 from app.core.sessions import SESSION_COOKIE, read_session
 from app.db.models import MANAGER_ROLES, ChatChannel, ChatConnection, ChatGroup, User
 from app.db.repository import OrgScope
@@ -36,6 +38,10 @@ class InstallStartOut(BaseModel):
     install_url: str
 
 
+class TeamSelectIn(BaseModel):
+    team_id: str
+
+
 def _callback_uri(kind: str) -> str:
     return f"{get_settings().oauth_public_base_url}/api/v1/chat/{kind}/callback"
 
@@ -44,6 +50,8 @@ def _install_configured(kind: str) -> bool:
     settings = get_settings()
     if kind == "slack":
         return bool(settings.slack_client_id and settings.slack_client_secret)
+    if kind == "teams":
+        return bool(settings.teams_client_id and settings.teams_client_secret)
     return False
 
 
@@ -56,6 +64,7 @@ def _to_out(connection: ChatConnection) -> ChatConnectionOut:
         status=connection.status.value,
         scopes=connection.scopes,
         has_user_token=connection.user_token_enc is not None,
+        external_resource_id=connection.external_resource_id,
         last_verified_at=connection.last_verified_at,
         last_error=connection.last_error,
         groups_synced_at=connection.groups_synced_at,
@@ -91,18 +100,20 @@ async def start_install(
     if not _install_configured(kind):
         raise BadRequest(f"This deployment has no {kind} app configured")
 
+    verifier, challenge = generate_pkce_pair()
     redirect_uri = _callback_uri(kind)
     state = await oauth_state.issue(
         redis,
         org_id=actor.org_id,
         user_id=actor.id,
         kind=kind,
-        # Slack's install flow has no PKCE; the field is unused here.
-        code_verifier="",
+        code_verifier=verifier,
         redirect_uri=redirect_uri,
     )
     return InstallStartOut(
-        install_url=get_chat_provider(kind).install_url(state=state, redirect_uri=redirect_uri)
+        install_url=get_chat_provider(kind).install_url(
+            state=state, redirect_uri=redirect_uri, code_challenge=challenge
+        )
     )
 
 
@@ -141,7 +152,7 @@ async def finish_install(
 
     try:
         install = await get_chat_provider(kind).complete_install(
-            code=code, redirect_uri=stored.redirect_uri
+            code=code, redirect_uri=stored.redirect_uri, code_verifier=stored.code_verifier
         )
         await chat_connections.upsert_install(
             db,
@@ -154,17 +165,54 @@ async def finish_install(
     except Exception as exc:
         log.exception("chat.install_failed", kind=kind, org_id=str(org_id))
         # Production still degrades to a redirect: this is browser navigation
-        # from Slack, and a raw 500 with internals leaks to whoever is looking
-        # at that browser. Everywhere else, surface the real error immediately
-        # instead of sending you back to the logs.
+        # from the provider, and a raw 500 with internals leaks to whoever is
+        # looking at that browser. Everywhere else, surface the real error
+        # immediately instead of sending you back to the logs.
         if get_settings().environment == "production":
             return back("error=install_failed")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Slack install failed: {exc}",
+            detail=f"{kind} install failed: {exc}",
         ) from exc
 
     return back(f"installed={kind}")
+
+
+@router.get(
+    "/connections/{connection_id}/available-teams",
+    response_model=list[AvailableTeamOut],
+)
+async def list_available_teams(
+    connection_id: uuid.UUID, db: DbSession, actor: User = RequireManager
+) -> list[AvailableTeamOut]:
+    """The installing admin's joined Teams, for the post-install "pick a Team"
+    step. Only Microsoft Teams has this concept — a Slack connection already
+    is the one workspace it covers, so this 404s for any other kind."""
+    connection = await OrgScope(db, actor.org_id).get(ChatConnection, connection_id)
+    if connection is None:
+        raise NotFound("Workspace not found")
+    if connection.kind != "teams":
+        raise NotFound(f"{connection.kind} connections have nothing to select")
+
+    provider = get_chat_provider(connection.kind)
+    credentials = await chat_connections.credentials_for(db, connection)
+    teams = await provider.list_available_teams(credentials)  # type: ignore[attr-defined]
+    return [AvailableTeamOut(**team) for team in teams]
+
+
+@router.patch("/connections/{connection_id}/team", response_model=ChatConnectionOut)
+async def select_team(
+    connection_id: uuid.UUID, payload: TeamSelectIn, db: DbSession, actor: User = RequireManager
+) -> ChatConnectionOut:
+    connection = await OrgScope(db, actor.org_id).get(ChatConnection, connection_id)
+    if connection is None:
+        raise NotFound("Workspace not found")
+    if connection.kind != "teams":
+        raise BadRequest(f"{connection.kind} connections have nothing to select")
+
+    connection.external_resource_id = payload.team_id
+    await db.commit()
+    return _to_out(connection)
 
 
 @router.post("/connections/{connection_id}/verify", response_model=ConnectionHealthOut)

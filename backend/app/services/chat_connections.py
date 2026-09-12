@@ -1,7 +1,7 @@
 """Chat workspace lifecycle: install, verification, and the cached pickers."""
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import structlog
 from sqlalchemy import select
@@ -11,21 +11,75 @@ from app.core import crypto
 from app.core.http import ProviderAuthError
 from app.db.models import ChatChannel, ChatConnection, ChatGroup, ConnectionStatus
 from app.domain.errors import GroupsUnavailable
-from app.domain.registry import get_chat_provider
-from app.domain.types import ChatCredentials, ChatInstall, ProviderHealth
+from app.domain.registry import get_chat_oauth_refresh, get_chat_provider
+from app.domain.types import ChatCredentials, ChatInstall, OAuthTokens, ProviderHealth
 
 log = structlog.get_logger(__name__)
 
+#: Refresh this far ahead of expiry so a long reconcile cannot straddle it.
+REFRESH_MARGIN = timedelta(minutes=5)
+
+
+def _needs_refresh(connection: ChatConnection) -> bool:
+    """True for a provider (Teams) with an expiring token that is due soon.
+
+    Slack's bot token never expires and never has a refresh_token_enc, so this
+    is always False for it — the check that matters is entirely data-driven,
+    not a branch on ``kind``.
+    """
+    if connection.refresh_token_enc is None or connection.token_expires_at is None:
+        return False
+    return connection.token_expires_at <= datetime.now(UTC) + REFRESH_MARGIN
+
+
+async def _apply_refresh(db: AsyncSession, connection: ChatConnection, tokens: OAuthTokens) -> None:
+    connection.bot_token_enc = await crypto.encrypt(db, connection.org_id, tokens.access_token)
+    if tokens.refresh_token:
+        # Some providers rotate the refresh token on every use.
+        connection.refresh_token_enc = await crypto.encrypt(
+            db, connection.org_id, tokens.refresh_token
+        )
+    connection.token_expires_at = tokens.expires_at
+    connection.status = ConnectionStatus.ACTIVE
+    connection.last_error = None
+
 
 async def credentials_for(db: AsyncSession, connection: ChatConnection) -> ChatCredentials:
-    """Decrypt both tokens. Slack bot tokens do not expire, so there is no refresh."""
+    """Decrypt both tokens, refreshing an expiring one first.
+
+    Slack's bot token never expires, so this is a no-op refresh check for it —
+    the refresh path only ever runs for a provider that stored a
+    refresh_token_enc at install (Teams).
+    """
+    if _needs_refresh(connection):
+        assert connection.refresh_token_enc is not None
+        refresh_token = await crypto.decrypt(db, connection.org_id, connection.refresh_token_enc)
+        oauth = get_chat_oauth_refresh(connection.kind)
+        assert oauth is not None, f"{connection.kind} has a refresh token but no refresh flow"
+        try:
+            tokens = await oauth.refresh(refresh_token=refresh_token)
+        except ProviderAuthError as exc:
+            connection.status = ConnectionStatus.NEEDS_REAUTH
+            connection.last_error = "Refresh token rejected; reconnect required"
+            await db.commit()
+            log.warning("chat.refresh_failed", connection_id=str(connection.id), error=str(exc))
+            raise
+        await _apply_refresh(db, connection, tokens)
+        await db.commit()
+        log.info("chat.token_refreshed", connection_id=str(connection.id))
+
     bot_token = await crypto.decrypt(db, connection.org_id, connection.bot_token_enc)
     user_token = (
         await crypto.decrypt(db, connection.org_id, connection.user_token_enc)
         if connection.user_token_enc
         else None
     )
-    return ChatCredentials(org_id=connection.org_id, bot_token=bot_token, user_token=user_token)
+    return ChatCredentials(
+        org_id=connection.org_id,
+        bot_token=bot_token,
+        user_token=user_token,
+        resource_id=connection.external_resource_id,
+    )
 
 
 async def upsert_install(
@@ -63,6 +117,9 @@ async def upsert_install(
         connection.user_token_enc = await crypto.encrypt(db, org_id, install.user_token)
         connection.installing_user_external_id = install.installing_user_external_id
         connection.user_scopes = install.user_scopes
+    if install.refresh_token:
+        connection.refresh_token_enc = await crypto.encrypt(db, org_id, install.refresh_token)
+    connection.token_expires_at = install.token_expires_at
     connection.scopes = install.scopes
     connection.installed_by_user_id = installed_by_user_id
     connection.status = ConnectionStatus.ACTIVE
@@ -81,7 +138,9 @@ async def verify_connection(db: AsyncSession, connection: ChatConnection) -> Pro
         health = await get_chat_provider(connection.kind).verify(credentials)
     except ProviderAuthError as exc:
         await mark_revoked(db, connection, str(exc)[:500])
-        return ProviderHealth(ok=False, detail="Slack rejected the token; reinstall required")
+        display_name = get_chat_provider(connection.kind).display_name
+        detail = f"{display_name} rejected the token; reinstall required"
+        return ProviderHealth(ok=False, detail=detail)
     except Exception as exc:
         connection.status = ConnectionStatus.ERROR
         connection.last_error = str(exc)[:500]

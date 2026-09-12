@@ -22,3 +22,7 @@ class GroupWriteNotPermitted(ChatProviderError):
 
 class EmptyMembershipRejected(ChatProviderError):
     """The platform refuses a group with no members — and so do we."""
+
+
+class TooManyMembers(ChatProviderError):
+    """The platform caps how many people a mentionable group can hold."""

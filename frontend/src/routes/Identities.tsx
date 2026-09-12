@@ -82,6 +82,7 @@ export default function Identities() {
                   canManage={canManage}
                   oncallId={oncallId}
                   chatId={chatId}
+                  isTeams={chat.find((c) => c.id === chatId)?.kind === "teams"}
                 />
               ))}
             </ul>
@@ -97,11 +98,13 @@ function Row({
   canManage,
   oncallId,
   chatId,
+  isTeams,
 }: {
   entry: DirectoryEntry;
   canManage: boolean;
   oncallId: string;
   chatId: string;
+  isTeams: boolean;
 }) {
   const queryClient = useQueryClient();
   const [chatUserId, setChatUserId] = useState("");
@@ -168,12 +171,12 @@ function Row({
               }}
             >
               <Label htmlFor={`link-${entry.provider_user.external_id}`} className="sr-only">
-                Slack user ID
+                {isTeams ? "Microsoft user ID" : "Slack user ID"}
               </Label>
               <Input
                 id={`link-${entry.provider_user.external_id}`}
                 className="h-8 w-40"
-                placeholder="Slack user ID"
+                placeholder={isTeams ? "Microsoft user ID" : "Slack user ID"}
                 value={chatUserId}
                 onChange={(event) => setChatUserId(event.target.value)}
                 required
