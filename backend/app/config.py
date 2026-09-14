@@ -62,6 +62,9 @@ class Settings(BaseSettings):
 
     teams_client_id: str = ""
     teams_client_secret: SecretStr = SecretStr("")
+    #: Kill switch independent of whether credentials are configured — lets the
+    #: integration stay deployed but hidden while the OAuth flow is unreliable.
+    teams_integration_enabled: bool = False
 
     #: The worker does most of the reconciling, so it has to be scrapeable in
     #: its own right — it has no HTTP API to piggyback on.

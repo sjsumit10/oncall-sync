@@ -55,6 +55,19 @@ def _install_configured(kind: str) -> bool:
     return False
 
 
+def _feature_enabled(kind: str) -> bool:
+    """Whether new connections of this kind can be started at all.
+
+    Separate from _install_configured: this hides an integration outright
+    (e.g. while its OAuth flow is still being stabilized) regardless of
+    whether credentials happen to be set. Does not affect a connection that
+    already exists — turning this off must not orphan an org already using it.
+    """
+    if kind == "teams":
+        return get_settings().teams_integration_enabled
+    return True
+
+
 def _to_out(connection: ChatConnection) -> ChatConnectionOut:
     return ChatConnectionOut(
         id=connection.id,
@@ -81,6 +94,7 @@ async def list_providers(_: CurrentUser) -> list[ChatProviderOut]:
             install_configured=_install_configured(kind),
         )
         for kind, provider in CHAT_PROVIDERS.items()
+        if _feature_enabled(kind)
     ]
 
 
@@ -95,7 +109,7 @@ async def list_connections(user: CurrentUser, db: DbSession) -> list[ChatConnect
 async def start_install(
     kind: str, redis: RedisClient, actor: User = RequireManager
 ) -> InstallStartOut:
-    if kind not in CHAT_PROVIDERS:
+    if kind not in CHAT_PROVIDERS or not _feature_enabled(kind):
         raise NotFound(f"Unknown chat provider: {kind}")
     if not _install_configured(kind):
         raise BadRequest(f"This deployment has no {kind} app configured")

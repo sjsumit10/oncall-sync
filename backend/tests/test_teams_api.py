@@ -26,6 +26,7 @@ def teams_app(monkeypatch: pytest.MonkeyPatch) -> None:
     settings = get_settings()
     monkeypatch.setattr(settings, "teams_client_id", "teams-client-id")
     monkeypatch.setattr(settings, "teams_client_secret", SecretStr("teams-client-secret"))
+    monkeypatch.setattr(settings, "teams_integration_enabled", True)
 
 
 async def install_teams(client: AsyncClient) -> dict[str, object]:
@@ -174,3 +175,57 @@ async def test_credentials_for_marks_needs_reauth_when_refresh_is_rejected(
         refreshed = await db.get(ChatConnection, uuid.UUID(str(connection["id"])))
         assert refreshed is not None
         assert refreshed.status is ConnectionStatus.NEEDS_REAUTH
+
+
+@respx.mock
+async def test_teams_is_hidden_from_providers_when_the_flag_is_off(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    settings = get_settings()
+    monkeypatch.setattr(settings, "teams_client_id", "teams-client-id")
+    monkeypatch.setattr(settings, "teams_client_secret", SecretStr("teams-client-secret"))
+    monkeypatch.setattr(settings, "teams_integration_enabled", False)
+
+    await signup(client)
+    kinds = [p["kind"] for p in (await client.get(f"{CHAT}/providers")).json()]
+    assert "teams" not in kinds
+    assert "slack" in kinds
+
+
+@respx.mock
+async def test_starting_a_teams_install_404s_when_the_flag_is_off(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    settings = get_settings()
+    monkeypatch.setattr(settings, "teams_client_id", "teams-client-id")
+    monkeypatch.setattr(settings, "teams_client_secret", SecretStr("teams-client-secret"))
+    monkeypatch.setattr(settings, "teams_integration_enabled", False)
+
+    await signup(client)
+    response = await client.post(f"{CHAT}/teams/install/start", headers=csrf(client))
+    assert response.status_code == 404
+
+
+@respx.mock
+async def test_teams_appears_in_providers_when_the_flag_is_on(
+    client: AsyncClient, teams_app: None
+) -> None:
+    await signup(client)
+    kinds = [p["kind"] for p in (await client.get(f"{CHAT}/providers")).json()]
+    assert "teams" in kinds
+
+
+@respx.mock
+async def test_an_existing_teams_connection_survives_the_flag_being_turned_off(
+    client: AsyncClient, teams_app: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    await signup(client)
+    connection = await install_teams(client)
+
+    monkeypatch.setattr(get_settings(), "teams_integration_enabled", False)
+
+    # Hidden from new-install UI, but the existing connection is untouched.
+    kinds = [p["kind"] for p in (await client.get(f"{CHAT}/providers")).json()]
+    assert "teams" not in kinds
+    still_there = await client.get(f"{CHAT}/connections")
+    assert any(c["id"] == connection["id"] for c in still_there.json())
