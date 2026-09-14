@@ -94,7 +94,7 @@ OAUTH_CALLBACK_BASE_URL=https://<your-subdomain>.ngrok-free.app
 ```
 
 `APP_BASE_URL` stays `localhost` — it's what the app uses for everything else.
-`OAUTH_CALLBACK_BASE_URL` only affects the two URLs that Slack/PagerDuty's own
+`OAUTH_CALLBACK_BASE_URL` only affects the URLs that Slack/Teams/PagerDuty's own
 servers have to be able to reach, and is optional: leave it unset and those fall
 back to `APP_BASE_URL` too, which is what you want once you're running behind a
 real public domain instead of a dev tunnel.
@@ -110,6 +110,7 @@ that's unset):
 |---|---|
 | Slack OAuth redirect | `$OAUTH_CALLBACK_BASE_URL/api/v1/chat/slack/callback` |
 | Slack events | `$OAUTH_CALLBACK_BASE_URL/api/v1/webhooks/slack/events` |
+| Microsoft Teams OAuth redirect | `$OAUTH_CALLBACK_BASE_URL/api/v1/chat/teams/callback` |
 | PagerDuty OAuth redirect | `$OAUTH_CALLBACK_BASE_URL/api/v1/oncall/connections/pagerduty/oauth/callback` |
 
 > ngrok gives you a new subdomain each restart on the free tier, and every URL
@@ -228,7 +229,88 @@ Two things the product cannot do for you:
 
 ---
 
-## 5. PagerDuty
+## 5. Microsoft Teams app
+
+Same one-app-many-tenants model as Slack: you register one Azure AD app, and
+every org's admin authorizes it against their own tenant from the Connections
+page. Unlike Slack, Teams has **no application-permission path for posting a
+channel message** — Graph requires a signed-in user's own token for that call
+specifically, no matter what — so this is a real OAuth authorization-code flow
+with a refresh token, not a one-way install.
+
+### Register the app
+
+In the [Azure Portal](https://portal.azure.com) → **Microsoft Entra ID** →
+**App registrations** → **New registration**.
+
+1. Name it (e.g. "On-Call Sync").
+2. **Supported account types** → **Accounts in any organizational directory**
+   (multi-tenant) — a single-tenant app would only ever work for your own org.
+3. **Redirect URI** (platform: Web):
+   `https://YOUR-DOMAIN/api/v1/chat/teams/callback`
+4. **Certificates & secrets** → **New client secret**. Copy the value
+   immediately — Azure only shows it once.
+5. **API permissions** → **Add a permission** → **Microsoft Graph** →
+   **Delegated permissions**, and add:
+
+| Scope | Used for |
+|---|---|
+| `TeamworkTag.ReadWrite` | Reading and rewriting the tag's membership — the core of the product |
+| `Team.ReadBasic.All` | Listing the admin's Teams, for the "which Team should this connect to" step |
+| `Channel.ReadBasic.All` | Listing channels in the rule builder |
+| `ChannelMessage.Send` | Posting the handoff message. **Delegated only** — there is no app-only equivalent |
+| `User.Read.All` | Matching PagerDuty people to Microsoft accounts by email |
+| `offline_access` | Issues a refresh token, since the access token expires in about an hour |
+
+```
+TEAMS_CLIENT_ID=...
+TEAMS_CLIENT_SECRET=...
+```
+
+```bash
+docker compose up -d --force-recreate api worker
+```
+
+No signing secret to copy — there is no Teams webhook (see below), so nothing
+verifies an inbound request signature the way `SLACK_SIGNING_SECRET` does.
+
+### Why `prompt=admin_consent`
+
+The authorize redirect always asks for admin consent, so **one Global or Teams
+admin approving covers the entire tenant** — the same one-click UX Slack's
+single "Add to Slack" click gives you, just via a real user token instead of
+an app-only grant (which, again, can't post messages). Every other member of
+the org never sees a permission prompt.
+
+### Prepare the workspace
+
+Three things the product cannot do for you:
+
+1. **Create the tag.** In Teams: open the Team → **⋯** → **Manage tags** →
+   **Create tag**. Give it the name people will `@mention`, e.g.
+   `devops-on-call`. Membership does not matter — it is about to be managed.
+2. **Select which Team to connect.** A tenant can contain many Teams, but
+   Graph's tag/channel/message APIs are scoped to one specific Team. After the
+   OAuth redirect completes, the Connections page prompts you to pick one from
+   the admin's joined Teams — there is no Slack-equivalent "workspace" concept
+   to imply this automatically.
+3. Nothing to invite: a delegated user token can post to any channel the
+   authorizing admin can see, unlike Slack's bot which must be explicitly
+   added to a channel first.
+
+### No webhook
+
+Slack pushes `app_uninstalled`/`tokens_revoked`/`subteam_updated` events; Teams
+has no equivalent registered here. A revoked or broken Teams connection is
+instead caught by the normal periodic reconcile — it surfaces as **needs
+reauthorization** on the next scheduled sync (typically within minutes), the
+same fallback every connection already has. This trades a little latency for
+not needing Graph's change-notification subscription-and-renewal machinery,
+which is a meaningfully different (and heavier) thing than Slack's webhook.
+
+---
+
+## 6. PagerDuty
 
 Two ways in. OAuth is scoped and revocable and is what you want in production;
 the API key is faster if you are just evaluating.
@@ -273,7 +355,7 @@ against PagerDuty *before* storing it, so a key that never worked is never saved
 
 ---
 
-## 6. Your first rule
+## 7. Your first rule
 
 With the stack up and both apps registered, open <http://localhost:5173>.
 
@@ -312,7 +394,7 @@ exactly the failure this product exists to prevent.
 
 ---
 
-## 7. Verify a real handoff
+## 8. Verify a real handoff
 
 Pressing *Sync now* proves the plumbing. It does not prove the scheduler wakes at
 the right moment, which is the actual product.
@@ -340,7 +422,7 @@ posted**, because repairing drift is not a handoff.
 
 ---
 
-## 8. Troubleshooting
+## 9. Troubleshooting
 
 | Symptom | Cause | Fix |
 |---|---|---|
@@ -349,6 +431,9 @@ posted**, because repairing drift is not a handoff.
 | No **Connect with PagerDuty** button | No OAuth app configured | Set `PAGERDUTY_CLIENT_ID`/`_SECRET`, or use the API key |
 | `error=invalid_state` after an OAuth redirect | State expired (10 min) or a different browser finished the flow | Start the connection again in the same browser |
 | `error=session_mismatch` | The callback landed in a browser without the session that began it | Sign in and retry in one browser |
+| Teams redirect fails with `AADSTS...` | Redirect URI doesn't exactly match what's registered, or the app isn't multi-tenant | Compare the URI character-for-character; confirm **Accounts in any organizational directory** is selected |
+| Teams connection shows **needs reauthorization** | The refresh token was rejected (revoked, or the admin's account lost access) | Reconnect from the Connections page — this re-runs the OAuth flow from scratch |
+| No **available Teams** to pick after connecting | The installing admin isn't a member of any Team | Have an admin who's actually in the target Team complete the install instead |
 | Group list is empty or errors with *Standard plan* | Free Slack workspace | User groups need Standard or above |
 | Channel missing from the picker | Bot not in it | `/invite @On-Call Sync`, then **Refresh** |
 | Rule stuck on **Not synced yet** | Worker down, or nothing has claimed it | `docker compose logs worker`; check for `cron:tick` |

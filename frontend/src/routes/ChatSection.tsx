@@ -5,10 +5,29 @@ import { useState } from "react";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { api } from "@/lib/api";
-import type { ChatConnection, ChatGroup, ChatProvider, ConnectionHealth } from "@/lib/types";
+import type {
+  AvailableTeam,
+  ChatConnection,
+  ChatGroup,
+  ChatProvider,
+  ConnectionHealth,
+} from "@/lib/types";
 import { errorMessage } from "./Login";
 import { StatusBadge } from "./StatusBadge";
+
+//: What to call a connection's "workspace" in prose — Slack calls it a
+//: workspace, Teams calls it a tenant.
+function workspaceLabel(kind: string): string {
+  return kind === "teams" ? "Microsoft Teams tenant" : "Slack workspace";
+}
 
 export function ChatSection({ canManage }: { canManage: boolean }) {
   const providers = useQuery({
@@ -62,7 +81,7 @@ function WorkspaceCard({
         <div className="flex flex-wrap items-center gap-3">
           <StatusBadge status={connection.status} />
           <span className="text-sm text-muted-foreground">
-            Slack workspace {connection.external_team_id}
+            {workspaceLabel(connection.kind)} {connection.external_team_id}
             {connection.last_verified_at &&
               ` · verified ${new Date(connection.last_verified_at).toLocaleString()}`}
           </span>
@@ -94,7 +113,7 @@ function WorkspaceCard({
           </div>
         </div>
 
-        {!connection.has_user_token && (
+        {connection.kind === "slack" && !connection.has_user_token && (
           <p className="mt-3 flex items-start gap-2 rounded-md bg-warning/10 px-3 py-2 text-sm text-warning">
             <AlertTriangle className="mt-0.5 size-4 shrink-0" />
             Installed without a user token. If this workspace restricts who may manage user
@@ -110,13 +129,62 @@ function WorkspaceCard({
             {verify.data.detail}
           </p>
         )}
-        {showGroups && <Groups connectionId={connection.id} />}
+        {connection.kind === "teams" && !connection.external_resource_id ? (
+          <SelectTeam connectionId={connection.id} />
+        ) : (
+          showGroups && <Groups connectionId={connection.id} kind={connection.kind} />
+        )}
       </CardContent>
     </Card>
   );
 }
 
-function Groups({ connectionId }: { connectionId: string }) {
+function SelectTeam({ connectionId }: { connectionId: string }) {
+  const queryClient = useQueryClient();
+
+  const teams = useQuery({
+    queryKey: ["available-teams", connectionId],
+    queryFn: () => api.get<AvailableTeam[]>(`/chat/connections/${connectionId}/available-teams`),
+  });
+  const select = useMutation({
+    mutationFn: (teamId: string) =>
+      api.patch<ChatConnection>(`/chat/connections/${connectionId}/team`, { team_id: teamId }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["chat-connections"] }),
+  });
+
+  return (
+    <div className="mt-4 border-t border-border pt-4">
+      <p className="mb-2 text-sm font-medium text-foreground">Select a Team</p>
+      <p className="mb-3 text-sm text-muted-foreground">
+        A tenant can contain many Teams — pick the one whose on-call tag and channel this
+        connection should manage.
+      </p>
+      {teams.error && <Alert>{errorMessage(teams.error)}</Alert>}
+      {select.error && <Alert>{errorMessage(select.error)}</Alert>}
+      {teams.data?.length === 0 && (
+        <p className="text-sm text-muted-foreground">
+          No Teams found for the account that installed this connection.
+        </p>
+      )}
+      {teams.data && teams.data.length > 0 && (
+        <Select disabled={select.isPending} onValueChange={(value) => select.mutate(value)}>
+          <SelectTrigger className="w-64">
+            <SelectValue placeholder="Choose a Team…" />
+          </SelectTrigger>
+          <SelectContent>
+            {teams.data.map((team) => (
+              <SelectItem key={team.id} value={team.id}>
+                {team.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      )}
+    </div>
+  );
+}
+
+function Groups({ connectionId, kind }: { connectionId: string; kind: string }) {
   const queryClient = useQueryClient();
   const key = ["chat-groups", connectionId];
 
@@ -151,7 +219,9 @@ function Groups({ connectionId }: { connectionId: string }) {
       {refresh.error && <Alert>{errorMessage(refresh.error)}</Alert>}
       {groups.data?.length === 0 && (
         <p className="text-sm text-muted-foreground">
-          No user groups yet. Create one in Slack, then refresh.
+          {kind === "teams"
+            ? "No tags yet. Create one in Teams, then refresh."
+            : "No user groups yet. Create one in Slack, then refresh."}
         </p>
       )}
       <ul className="divide-y divide-border">
@@ -200,9 +270,11 @@ function InstallCard({
               Add to {provider.display_name}
             </Button>
             <p className="mt-3 text-xs text-muted-foreground">
-              Approve both the app and the user permissions. The user grant is the fallback for
-              workspaces that restrict who may manage user groups — without it, updates fail
-              there.
+              {provider.kind === "teams"
+                ? "One tenant admin approving covers your whole organization — no per-user setup needed."
+                : "Approve both the app and the user permissions. The user grant is the fallback " +
+                  "for workspaces that restrict who may manage user groups — without it, updates " +
+                  "fail there."}
             </p>
             {start.error && (
               <div className="mt-3">

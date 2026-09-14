@@ -65,6 +65,18 @@ class OAuthFlow(Protocol):
 
 
 @runtime_checkable
+class ChatOAuthRefresh(Protocol):
+    """Implemented by chat providers whose installed token expires (Teams).
+
+    Slack's bot token never expires so SlackProvider does not implement this;
+    chat_connections.credentials_for looks a provider up here only when it
+    finds a stored refresh token, so absence here is never an error path.
+    """
+
+    async def refresh(self, *, refresh_token: str) -> OAuthTokens: ...
+
+
+@runtime_checkable
 class ChatProvider(Protocol):
     """A chat workspace whose group handles we keep pointed at the on-call person.
 
@@ -75,9 +87,11 @@ class ChatProvider(Protocol):
     kind: str
     display_name: str
 
-    def install_url(self, *, state: str, redirect_uri: str) -> str: ...
+    def install_url(self, *, state: str, redirect_uri: str, code_challenge: str) -> str: ...
 
-    async def complete_install(self, *, code: str, redirect_uri: str) -> ChatInstall: ...
+    async def complete_install(
+        self, *, code: str, redirect_uri: str, code_verifier: str
+    ) -> ChatInstall: ...
 
     async def verify(self, credentials: ChatCredentials) -> ProviderHealth: ...
 

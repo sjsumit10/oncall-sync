@@ -37,7 +37,7 @@ export function RulePreviewPanel({ preview }: { preview: RulePreview }) {
 
       {preview.used_fallback && (
         <p className="text-sm text-warning">
-          Using the fallback member — Slack does not allow an empty user group.
+          Using the fallback member — an empty group is not allowed.
         </p>
       )}
 

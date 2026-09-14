@@ -131,10 +131,18 @@ class ChatConnectionOut(BaseModel):
     #: False when the workspace restricts user-group management and no installer
     #: token is held — the write path would have nothing to fall back to.
     has_user_token: bool
+    #: The selected Microsoft Team's Graph id. Null for Slack (not applicable)
+    #: and for a Teams connection that hasn't picked a Team yet.
+    external_resource_id: str | None
     last_verified_at: datetime | None
     last_error: str | None
     groups_synced_at: datetime | None
     created_at: datetime
+
+
+class AvailableTeamOut(BaseModel):
+    id: str
+    name: str
 
 
 class ChatGroupOut(BaseModel):

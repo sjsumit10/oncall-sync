@@ -60,6 +60,9 @@ class Settings(BaseSettings):
     slack_client_secret: SecretStr = SecretStr("")
     slack_signing_secret: SecretStr = SecretStr("")
 
+    teams_client_id: str = ""
+    teams_client_secret: SecretStr = SecretStr("")
+
     #: The worker does most of the reconciling, so it has to be scrapeable in
     #: its own right — it has no HTTP API to piggyback on.
     worker_metrics_port: int = 9100

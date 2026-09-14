@@ -5,8 +5,9 @@ exposes this registry directly, so the UI renders whatever is registered rather
 than carrying its own hardcoded list.
 """
 
-from app.domain.interfaces import ChatProvider, OAuthFlow, OncallProvider
+from app.domain.interfaces import ChatOAuthRefresh, ChatProvider, OAuthFlow, OncallProvider
 from app.providers.chat.slack.provider import SlackProvider
+from app.providers.chat.teams.provider import TeamsProvider
 from app.providers.oncall.pagerduty.oauth import PagerDutyOAuth
 from app.providers.oncall.pagerduty.provider import PagerDutyProvider
 
@@ -22,6 +23,12 @@ ONCALL_OAUTH_FLOWS: dict[str, OAuthFlow] = {
 
 CHAT_PROVIDERS: dict[str, ChatProvider] = {
     SlackProvider.kind: SlackProvider(),
+    TeamsProvider.kind: TeamsProvider(),
+}
+
+#: Only chat providers whose installed token expires (Teams) appear here.
+CHAT_OAUTH_REFRESH: dict[str, ChatOAuthRefresh] = {
+    TeamsProvider.kind: TeamsProvider(),
 }
 
 
@@ -44,3 +51,8 @@ def get_chat_provider(kind: str) -> ChatProvider:
         return CHAT_PROVIDERS[kind]
     except KeyError:
         raise LookupError(f"Unknown chat provider: {kind}") from None
+
+
+def get_chat_oauth_refresh(kind: str) -> ChatOAuthRefresh | None:
+    """None (not a raise) for a provider whose token never expires — e.g. Slack."""
+    return CHAT_OAUTH_REFRESH.get(kind)

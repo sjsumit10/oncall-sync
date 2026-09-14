@@ -83,10 +83,13 @@ class SlackProvider:
             token, org_id=str(credentials.org_id), client=self._client, redis=self._redis
         )
 
-    def install_url(self, *, state: str, redirect_uri: str) -> str:
+    def install_url(self, *, state: str, redirect_uri: str, code_challenge: str) -> str:
+        # Slack's install flow has no PKCE; code_challenge is unused here.
         return oauth.install_url(state=state, redirect_uri=redirect_uri)
 
-    async def complete_install(self, *, code: str, redirect_uri: str) -> ChatInstall:
+    async def complete_install(
+        self, *, code: str, redirect_uri: str, code_verifier: str
+    ) -> ChatInstall:
         return await oauth.complete_install(code=code, redirect_uri=redirect_uri)
 
     async def verify(self, credentials: ChatCredentials) -> ProviderHealth:
