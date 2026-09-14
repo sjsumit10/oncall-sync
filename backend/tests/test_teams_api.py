@@ -44,7 +44,7 @@ async def install_teams(client: AsyncClient) -> dict[str, object]:
 
 
 @respx.mock
-async def test_install_url_requests_admin_consent_and_pkce(
+async def test_install_url_forces_consent_and_requests_pkce(
     client: AsyncClient, teams_app: None
 ) -> None:
     await signup(client)
@@ -52,7 +52,10 @@ async def test_install_url_requests_admin_consent_and_pkce(
     assert start.status_code == 200, start.text
 
     url = httpx.URL(start.json()["install_url"])
-    assert url.params["prompt"] == "admin_consent"
+    # Must never be "admin_consent" here — that value is only valid on the
+    # separate /adminconsent endpoint and is rejected with AADSTS901001 on
+    # the regular /authorize endpoint this app uses.
+    assert url.params["prompt"] == "consent"
     assert url.params["code_challenge_method"] == "S256"
     assert url.params["code_challenge"]
 

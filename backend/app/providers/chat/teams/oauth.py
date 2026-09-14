@@ -2,11 +2,17 @@
 
 Delegated scopes, not app-only: Graph has no application-permission variant of
 ChannelMessage.Send (posting into a channel), so a signed-in user's token is
-required for the one call this product cannot do without. ``prompt=admin_consent``
-on the authorize redirect still gets the "one admin approves, covers the whole
-tenant" UX — it just does it with a real delegated token instead of a
-client-credentials grant, and that token expires and needs the refresh flow
-below (unlike Slack's bot token, which never does).
+required for the one call this product cannot do without.
+
+No ``prompt=admin_consent`` here — that value is only valid on the dedicated
+``/adminconsent`` endpoint (a separate, code-less flow) and is rejected with
+AADSTS901001 on the regular ``/authorize`` endpoint used below. It isn't
+needed anyway: every scope requested is already marked admin-consent-required
+by Graph, so a genuine tenant admin going through the normal authorize flow
+gets a "Consent on behalf of your organization" checkbox, which grants it
+tenant-wide on its own — the same "one admin approves, covers everyone" UX,
+via the standard flow rather than a special parameter. That token expires and
+needs the refresh flow below (unlike Slack's bot token, which never does).
 """
 
 from datetime import UTC, datetime, timedelta
@@ -46,9 +52,10 @@ def install_url(*, state: str, redirect_uri: str, code_challenge: str) -> str:
             "state": state,
             "code_challenge": code_challenge,
             "code_challenge_method": "S256",
-            # One Global/Teams admin approving covers the whole tenant, the
-            # same one-click UX an app-only grant would have given us.
-            "prompt": "admin_consent",
+            # Force the consent screen every time rather than silently reusing
+            # a prior, narrower grant — a scope added after someone already
+            # consented would otherwise fail at call time instead of here.
+            "prompt": "consent",
         }
     )
     return f"{AUTHORIZE_URL}?{query}"
