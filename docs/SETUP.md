@@ -274,13 +274,28 @@ docker compose up -d --force-recreate api worker
 No signing secret to copy — there is no Teams webhook (see below), so nothing
 verifies an inbound request signature the way `SLACK_SIGNING_SECRET` does.
 
-### Why `prompt=admin_consent`
+### Why one admin's click covers the whole org
 
-The authorize redirect always asks for admin consent, so **one Global or Teams
-admin approving covers the entire tenant** — the same one-click UX Slack's
-single "Add to Slack" click gives you, just via a real user token instead of
-an app-only grant (which, again, can't post messages). Every other member of
-the org never sees a permission prompt.
+Every scope above is marked **admin consent required** by Graph. When a
+genuine tenant admin (Global Administrator, Cloud Application Administrator,
+or Application Administrator) completes the connect flow, the consent screen
+shows a **"Consent on behalf of your organization"** checkbox — checking it
+grants tenant-wide, not just for that admin. That's the same one-click UX
+Slack's single "Add to Slack" click gives you, just via a real user token
+instead of an app-only grant (which, again, can't post messages). Every other
+member of the org never sees a permission prompt.
+
+Anyone who **isn't** an admin gets stopped with `AADSTS90094` ("admin
+approval required") instead of a token — expected, not a bug: have an actual
+admin complete the connect flow instead.
+
+> There's a separate Microsoft identity platform endpoint,
+> `/v2.0/adminconsent`, that also grants tenant-wide consent — but it's a
+> distinct, code-less flow (no `code` comes back to exchange for a token) and
+> its `prompt=admin_consent` value is rejected with `AADSTS901001` if sent to
+> the regular `/authorize` endpoint. This app doesn't use it: the normal
+> authorize flow above already gets both the tenant-wide grant *and* a real,
+> refreshable delegated token in one redirect.
 
 ### Prepare the workspace
 
@@ -431,7 +446,10 @@ posted**, because repairing drift is not a handoff.
 | No **Connect with PagerDuty** button | No OAuth app configured | Set `PAGERDUTY_CLIENT_ID`/`_SECRET`, or use the API key |
 | `error=invalid_state` after an OAuth redirect | State expired (10 min) or a different browser finished the flow | Start the connection again in the same browser |
 | `error=session_mismatch` | The callback landed in a browser without the session that began it | Sign in and retry in one browser |
-| Teams redirect fails with `AADSTS...` | Redirect URI doesn't exactly match what's registered, or the app isn't multi-tenant | Compare the URI character-for-character; confirm **Accounts in any organizational directory** is selected |
+| Azure Portal: *"...permission(s) are currently not supported"* adding `TeamworkTag.ReadWrite` | App's **Supported account types** includes personal Microsoft accounts — Teams tags don't exist for those | Authentication → change to **Accounts in any organizational directory** (no personal accounts); if locked, edit `signInAudience` to `AzureADMultipleOrgs` in the app **Manifest** |
+| `AADSTS901001: ...prompt request parameter value 'admin_consent' is invalid` | A bug fixed upstream of this doc — an old build sent `prompt=admin_consent` to `/authorize`, which is only valid on the separate `/adminconsent` endpoint | Update to a current build; the authorize URL now sends `prompt=consent` instead |
+| `AADSTS90094: admin approval required` | The person completing the connect flow isn't a tenant admin | Have a Global/Cloud Application/Application admin do it instead |
+| Teams redirect fails with another `AADSTS...` | Redirect URI doesn't exactly match what's registered | Compare the URI character-for-character, including `http`/`https` and trailing slash |
 | Teams connection shows **needs reauthorization** | The refresh token was rejected (revoked, or the admin's account lost access) | Reconnect from the Connections page — this re-runs the OAuth flow from scratch |
 | No **available Teams** to pick after connecting | The installing admin isn't a member of any Team | Have an admin who's actually in the target Team complete the install instead |
 | Group list is empty or errors with *Standard plan* | Free Slack workspace | User groups need Standard or above |
