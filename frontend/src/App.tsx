@@ -33,6 +33,7 @@ export default function App() {
         <Route path="/connections" element={<Connections />} />
         <Route path="/rules" element={<Rules />} />
         <Route path="/rules/new" element={<RuleBuilder />} />
+        <Route path="/rules/:ruleId/edit" element={<RuleBuilder />} />
         <Route path="/identities" element={<Identities />} />
         <Route path="/plans" element={<Plans />} />
         <Route path="/activity" element={<Activity />} />

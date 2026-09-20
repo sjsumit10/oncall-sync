@@ -189,6 +189,7 @@ async def validate_targets(
     chat_connection_id: uuid.UUID,
     group_external_id: str,
     notify_channel_external_id: str | None,
+    notify_on_change: bool,
     escalation_levels: list[int],
 ) -> None:
     """Reject a rule that cannot possibly work, at the point it is written."""
@@ -196,6 +197,12 @@ async def validate_targets(
         raise BadRequest("Choose at least one escalation level")
     if any(level < 1 for level in escalation_levels):
         raise BadRequest("Escalation levels start at 1")
+    if notify_on_change and not notify_channel_external_id:
+        # Silently accepting this leaves a rule that can never announce a
+        # handoff, with nothing in the UI ever telling you why.
+        raise BadRequest(
+            "Choose a channel to announce handoffs in, or turn off handoff announcements."
+        )
 
     oncall_connection = await db.scalar(
         select(OncallConnection).where(

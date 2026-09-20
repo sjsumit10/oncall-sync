@@ -112,6 +112,76 @@ async def test_quiet_mode_needs_no_channel(client: AsyncClient) -> None:
 
 
 @respx.mock
+async def test_notify_on_change_requires_a_channel(client: AsyncClient) -> None:
+    ids = await connected_org(client)
+    response = await client.post(
+        RULES,
+        json=rule_payload(ids, notify_channel_external_id=None, notify_on_change=True),
+        headers=csrf(client),
+    )
+    assert response.status_code == 400
+    assert "Choose a channel" in response.json()["detail"]
+
+
+@respx.mock
+async def test_turning_on_notify_via_update_requires_a_channel(client: AsyncClient) -> None:
+    ids = await connected_org(client)
+    created = (
+        await client.post(
+            RULES,
+            json=rule_payload(ids, notify_channel_external_id=None, notify_on_change=False),
+            headers=csrf(client),
+        )
+    ).json()
+
+    response = await client.patch(
+        f"{RULES}/{created['id']}",
+        json={"notify_on_change": True},
+        headers=csrf(client),
+    )
+    assert response.status_code == 400
+    assert "Choose a channel" in response.json()["detail"]
+
+
+@respx.mock
+async def test_clearing_the_channel_via_update_requires_notify_off(client: AsyncClient) -> None:
+    ids = await connected_org(client)
+    created = (await client.post(RULES, json=rule_payload(ids), headers=csrf(client))).json()
+    assert created["notify_on_change"] is True
+
+    response = await client.patch(
+        f"{RULES}/{created['id']}",
+        json={"notify_channel_external_id": None},
+        headers=csrf(client),
+    )
+    assert response.status_code == 400
+    assert "Choose a channel" in response.json()["detail"]
+
+
+@respx.mock
+async def test_a_quiet_rule_can_be_switched_to_notify_by_adding_a_channel(
+    client: AsyncClient,
+) -> None:
+    ids = await connected_org(client)
+    created = (
+        await client.post(
+            RULES,
+            json=rule_payload(ids, notify_channel_external_id=None, notify_on_change=False),
+            headers=csrf(client),
+        )
+    ).json()
+
+    response = await client.patch(
+        f"{RULES}/{created['id']}",
+        json={"notify_on_change": True, "notify_channel_external_id": "C_OPS"},
+        headers=csrf(client),
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["notify_on_change"] is True
+    assert response.json()["notify_channel_external_id"] == "C_OPS"
+
+
+@respx.mock
 async def test_escalation_levels_are_validated_and_deduplicated(client: AsyncClient) -> None:
     ids = await connected_org(client)
 

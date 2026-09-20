@@ -1,6 +1,8 @@
-import { useMutation } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { RefreshCw } from "lucide-react";
+import type { ReactNode } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 
 import { Field } from "@/components/field";
 import { PageHeader } from "@/components/page";
@@ -19,7 +21,7 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { api } from "@/lib/api";
 import { useChannels, useConnections, useGroups, useSchedules } from "@/lib/connections";
-import type { SyncRule } from "@/lib/types";
+import type { ChatChannel, SyncRule } from "@/lib/types";
 import { errorMessage } from "./Login";
 import { ResetTemplateButton, TemplateEditor } from "./TemplateEditor";
 
@@ -27,7 +29,15 @@ const LEVELS = [1, 2, 3];
 
 export default function RuleBuilder() {
   const navigate = useNavigate();
+  const { ruleId } = useParams();
+  const isEdit = Boolean(ruleId);
   const { oncall, chat } = useConnections();
+
+  const existing = useQuery({
+    queryKey: ["rule", ruleId],
+    queryFn: () => api.get<SyncRule>(`/rules/${ruleId}`),
+    enabled: isEdit,
+  });
 
   const [oncallId, setOncallId] = useState("");
   const [chatId, setChatId] = useState("");
@@ -40,13 +50,35 @@ export default function RuleBuilder() {
   const [fallback, setFallback] = useState("");
   const [template, setTemplate] = useState("");
 
-  // Default to the only connection of each kind, which is the normal case.
+  // Default to the only connection of each kind, which is the normal case —
+  // but only when creating. Editing seeds these from the rule itself below.
   useEffect(() => {
+    if (isEdit) return;
     if (!oncallId && oncall.length > 0) setOncallId(oncall[0].id);
-  }, [oncall, oncallId]);
+  }, [isEdit, oncall, oncallId]);
   useEffect(() => {
+    if (isEdit) return;
     if (!chatId && chat.length > 0) setChatId(chat[0].id);
-  }, [chat, chatId]);
+  }, [isEdit, chat, chatId]);
+
+  // Seed the form once the rule loads. A ref (not state) so this never fires
+  // twice and clobbers an in-progress edit if the query refetches.
+  const seeded = useRef(false);
+  useEffect(() => {
+    if (!existing.data || seeded.current) return;
+    seeded.current = true;
+    const rule = existing.data;
+    setOncallId(rule.oncall_connection_id);
+    setChatId(rule.chat_connection_id);
+    setName(rule.name);
+    setScheduleId(rule.schedule_external_id);
+    setGroupId(rule.group_external_id);
+    setChannelId(rule.notify_channel_external_id ?? "");
+    setLevels(rule.escalation_levels);
+    setNotify(rule.notify_on_change);
+    setFallback(rule.fallback_chat_user_id ?? "");
+    setTemplate(rule.message_template ?? "");
+  }, [existing.data]);
 
   const schedules = useSchedules(oncallId || undefined);
   const groups = useGroups(chatId || undefined);
@@ -54,9 +86,29 @@ export default function RuleBuilder() {
   const chatKind = chat.find((c) => c.id === chatId)?.kind;
   const isTeams = chatKind === "teams";
 
-  const create = useMutation({
+  const queryClient = useQueryClient();
+
+  // The channel list only ever updates when this is called — an invite sent
+  // in Slack after the cache was first populated is otherwise never noticed.
+  const refreshChannels = useMutation({
     mutationFn: () =>
-      api.post<SyncRule>("/rules", {
+      api.get<ChatChannel[]>(`/chat/connections/${chatId}/channels?refresh=true`),
+    onSuccess: (data) => queryClient.setQueryData(["chat-channels", chatId], data),
+  });
+
+  const save = useMutation({
+    mutationFn: () => {
+      if (isEdit) {
+        return api.patch<SyncRule>(`/rules/${ruleId}`, {
+          name,
+          escalation_levels: levels,
+          notify_channel_external_id: notify && channelId ? channelId : null,
+          notify_on_change: notify,
+          message_template: template.trim() || null,
+          fallback_chat_user_id: fallback.trim() || null,
+        });
+      }
+      return api.post<SyncRule>("/rules", {
         name,
         oncall_connection_id: oncallId,
         schedule_external_id: scheduleId,
@@ -67,15 +119,26 @@ export default function RuleBuilder() {
         notify_on_change: notify,
         message_template: template.trim() || null,
         fallback_chat_user_id: fallback.trim() || null,
-      }),
-    onSuccess: () => navigate("/rules"),
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["rules"] });
+      navigate("/rules");
+    },
   });
 
   const selectedHandle = groups.data?.find((g) => g.external_id === groupId)?.handle;
 
+  if (isEdit && existing.isPending) {
+    return <p className="text-sm text-muted-foreground">Loading rule…</p>;
+  }
+
   return (
     <div className="space-y-6">
-      <PageHeader title="New sync rule" description="Map a schedule to a chat group handle." />
+      <PageHeader
+        title={isEdit ? "Edit sync rule" : "New sync rule"}
+        description="Map a schedule to a chat group handle."
+      />
 
       <Card>
         <CardContent className="pt-6">
@@ -83,7 +146,7 @@ export default function RuleBuilder() {
             className="space-y-6"
             onSubmit={(event) => {
               event.preventDefault();
-              create.mutate();
+              save.mutate();
             }}
           >
             <Field
@@ -94,17 +157,28 @@ export default function RuleBuilder() {
               onChange={(event) => setName(event.target.value)}
             />
 
-            <PickerField
-              label="Schedule"
-              value={scheduleId}
-              onChange={setScheduleId}
-              placeholder="Choose a schedule…"
-              options={(schedules.data ?? []).map((s) => ({
-                value: s.external_id,
-                label: `${s.name} (${s.timezone})`,
-              }))}
-              empty="No schedules cached. Refresh them on the connections page."
-            />
+            {isEdit ? (
+              <ReadOnlyField
+                label="Schedule"
+                value={(() => {
+                  const schedule = schedules.data?.find((s) => s.external_id === scheduleId);
+                  return schedule ? `${schedule.name} (${schedule.timezone})` : scheduleId;
+                })()}
+                hint="Can't be changed after creation — delete and recreate the rule instead."
+              />
+            ) : (
+              <PickerField
+                label="Schedule"
+                value={scheduleId}
+                onChange={setScheduleId}
+                placeholder="Choose a schedule…"
+                options={(schedules.data ?? []).map((s) => ({
+                  value: s.external_id,
+                  label: `${s.name} (${s.timezone})`,
+                }))}
+                empty="No schedules cached. Refresh them on the connections page."
+              />
+            )}
 
             <fieldset className="space-y-2">
               <legend className="text-sm font-medium text-foreground">Escalation levels</legend>
@@ -131,21 +205,32 @@ export default function RuleBuilder() {
               </p>
             </fieldset>
 
-            <PickerField
-              label="User group to keep updated"
-              value={groupId}
-              onChange={setGroupId}
-              placeholder="Choose a group…"
-              options={(groups.data ?? []).map((g) => ({
-                value: g.external_id,
-                label: `@${g.handle} — ${g.name}`,
-              }))}
-              empty={
-                isTeams
-                  ? "No tags found. Create one in Teams, then refresh."
-                  : "No user groups found. Create one in Slack, then refresh."
-              }
-            />
+            {isEdit ? (
+              <ReadOnlyField
+                label="User group to keep updated"
+                value={(() => {
+                  const group = groups.data?.find((g) => g.external_id === groupId);
+                  return group ? `@${group.handle} — ${group.name}` : groupId;
+                })()}
+                hint="Can't be changed after creation — delete and recreate the rule instead."
+              />
+            ) : (
+              <PickerField
+                label="User group to keep updated"
+                value={groupId}
+                onChange={setGroupId}
+                placeholder="Choose a group…"
+                options={(groups.data ?? []).map((g) => ({
+                  value: g.external_id,
+                  label: `@${g.handle} — ${g.name}`,
+                }))}
+                empty={
+                  isTeams
+                    ? "No tags found. Create one in Teams, then refresh."
+                    : "No user groups found. Create one in Slack, then refresh."
+                }
+              />
+            )}
 
             <label className="flex items-center justify-between rounded-lg border border-border px-4 py-3">
               <span>
@@ -169,8 +254,23 @@ export default function RuleBuilder() {
                   options={(channels.data ?? [])
                     .filter((c) => c.bot_is_member)
                     .map((c) => ({ value: c.external_id, label: `#${c.name}` }))}
-                  empty="No channels the app has joined. Invite it to a channel, then refresh."
+                  empty="No channels the app has joined. Invite it in Slack, then refresh below."
+                  action={
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => refreshChannels.mutate()}
+                      disabled={refreshChannels.isPending || !chatId}
+                    >
+                      <RefreshCw
+                        className={`size-3.5 ${refreshChannels.isPending ? "animate-spin" : ""}`}
+                      />
+                      {refreshChannels.isPending ? "Refreshing…" : "Refresh"}
+                    </Button>
+                  }
                 />
+                {refreshChannels.error && <Alert>{errorMessage(refreshChannels.error)}</Alert>}
                 <TemplateEditor value={template} onChange={setTemplate} />
                 {template.trim() && <ResetTemplateButton onReset={() => setTemplate("")} />}
               </div>
@@ -197,11 +297,17 @@ export default function RuleBuilder() {
               </p>
             )}
 
-            {create.error && <Alert>{errorMessage(create.error)}</Alert>}
+            {save.error && <Alert>{errorMessage(save.error)}</Alert>}
 
             <div className="flex gap-2">
-              <Button type="submit" disabled={create.isPending}>
-                {create.isPending ? "Creating…" : "Create rule"}
+              <Button type="submit" disabled={save.isPending}>
+                {save.isPending
+                  ? isEdit
+                    ? "Saving…"
+                    : "Creating…"
+                  : isEdit
+                    ? "Save changes"
+                    : "Create rule"}
               </Button>
               <Button type="button" variant="outline" onClick={() => navigate("/rules")}>
                 Cancel
@@ -214,6 +320,18 @@ export default function RuleBuilder() {
   );
 }
 
+function ReadOnlyField({ label, value, hint }: { label: string; value: string; hint: string }) {
+  return (
+    <div className="space-y-1.5">
+      <Label>{label}</Label>
+      <p className="rounded-md border border-border bg-muted/40 px-3 py-2 text-sm text-foreground">
+        {value}
+      </p>
+      <p className="text-xs text-muted-foreground">{hint}</p>
+    </div>
+  );
+}
+
 function PickerField({
   label,
   value,
@@ -221,6 +339,7 @@ function PickerField({
   options,
   empty,
   placeholder,
+  action,
 }: {
   label: string;
   value: string;
@@ -228,10 +347,14 @@ function PickerField({
   options: { value: string; label: string }[];
   empty: string;
   placeholder: string;
+  action?: ReactNode;
 }) {
   return (
     <div className="space-y-1.5">
-      <Label>{label}</Label>
+      <div className="flex items-center justify-between">
+        <Label>{label}</Label>
+        {action}
+      </div>
       {options.length === 0 ? (
         <p className="text-sm text-muted-foreground">{empty}</p>
       ) : (

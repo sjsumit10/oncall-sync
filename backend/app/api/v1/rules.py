@@ -179,6 +179,7 @@ async def create_rule(payload: RuleIn, db: DbSession, actor: User = RequireManag
         chat_connection_id=payload.chat_connection_id,
         group_external_id=payload.group_external_id,
         notify_channel_external_id=payload.notify_channel_external_id,
+        notify_on_change=payload.notify_on_change,
         escalation_levels=payload.escalation_levels,
     )
 
@@ -239,17 +240,36 @@ async def update_rule(
     fields = payload.model_dump(exclude_unset=True)
     if "message_template" in fields:
         _assert_template_ok(fields["message_template"])
-    if "escalation_levels" in fields and fields["escalation_levels"] is not None:
-        await sync_rules.validate_targets(
-            db,
-            org_id=actor.org_id,
-            oncall_connection_id=rule.oncall_connection_id,
-            schedule_external_id=rule.schedule_external_id,
-            chat_connection_id=rule.chat_connection_id,
-            group_external_id=rule.group_external_id,
-            notify_channel_external_id=fields.get("notify_channel_external_id"),
-            escalation_levels=fields["escalation_levels"],
-        )
+
+    # Always revalidate against the rule's *effective* post-update state, not
+    # just when a field that used to trigger this changed — e.g. turning
+    # notify_on_change on, or clearing the channel, must be caught here too,
+    # not just changing escalation_levels.
+    effective_channel = (
+        fields["notify_channel_external_id"]
+        if "notify_channel_external_id" in fields
+        else rule.notify_channel_external_id
+    )
+    effective_notify = (
+        fields["notify_on_change"] if "notify_on_change" in fields else rule.notify_on_change
+    )
+    effective_levels = (
+        fields["escalation_levels"]
+        if fields.get("escalation_levels") is not None
+        else rule.escalation_levels
+    )
+    await sync_rules.validate_targets(
+        db,
+        org_id=actor.org_id,
+        oncall_connection_id=rule.oncall_connection_id,
+        schedule_external_id=rule.schedule_external_id,
+        chat_connection_id=rule.chat_connection_id,
+        group_external_id=rule.group_external_id,
+        notify_channel_external_id=effective_channel,
+        notify_on_change=effective_notify,
+        escalation_levels=effective_levels,
+    )
+    if fields.get("escalation_levels") is not None:
         fields["escalation_levels"] = sorted(set(fields["escalation_levels"]))
 
     for key, value in fields.items():

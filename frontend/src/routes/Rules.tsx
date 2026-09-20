@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Eye, History, Pause, Play, Plug, Trash2, Workflow } from "lucide-react";
+import { Eye, History, Pause, Pencil, Play, Plug, Trash2, Workflow } from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 
@@ -150,6 +150,12 @@ function RuleCard({ rule, canManage }: { rule: SyncRule; canManage: boolean }) {
               <>
                 <Button onClick={() => syncNow.mutate()} size="sm" disabled={syncNow.isPending}>
                   {syncNow.isPending ? "Syncing…" : "Sync now"}
+                </Button>
+                <Button variant="outline" size="sm" asChild>
+                  <Link to={`/rules/${rule.id}/edit`}>
+                    <Pencil className="size-4" />
+                    Edit
+                  </Link>
                 </Button>
                 <Button
                   variant="outline"
