@@ -19,6 +19,38 @@ Multiple workers are safe: each beat tick claims due rules with
 advisory lock. Two workers cannot process the same rule at once, and a worker that
 dies mid-run releases its rules when the lease expires.
 
+### One reference deployment: single VPS + Supabase + Upstash + S3/CloudFront
+
+`docker-compose.prod.yml` runs only `api` and `worker` — no `postgres` or
+`redis` containers — for the common case of a single VPS with managed
+Postgres (Supabase) and Redis (Upstash) elsewhere, and a static frontend on
+S3/CloudFront. Copy `.env.production.example` to `.env.production` on the
+VPS, fill it in, then:
+
+```
+docker compose -f docker-compose.prod.yml --env-file .env.production build
+docker compose -f docker-compose.prod.yml --env-file .env.production run --rm api python scripts/bootstrap_db.py
+docker compose -f docker-compose.prod.yml --env-file .env.production run --rm api alembic upgrade head
+docker compose -f docker-compose.prod.yml --env-file .env.production up -d
+```
+
+Three things that bite specifically because Postgres/Redis/frontend are all
+off-box:
+
+- **TLS.** The compose file doesn't terminate it. Put something in front of
+  `api` (Caddy/nginx on the same VPS, or an ALB) so the CloudFront frontend
+  is talking to `https://api.yourdomain.com`, not plain HTTP.
+- **Cookies need a shared site.** Auth cookies are `SameSite=Lax`, so the API
+  and frontend domains must share a registrable domain — `api.yourdomain.com`
+  and `app.yourdomain.com` both under `yourdomain.com` works; a bare
+  `*.cloudfront.net` URL does not share a site with the API's domain and
+  login will silently fail. Put a custom domain on the CloudFront
+  distribution.
+- **TLS to the managed stores.** Supabase requires TLS on the direct
+  connection (`?ssl=require` in `DATABASE_URL`/`DATABASE_ADMIN_URL`); Upstash
+  requires the `rediss://` scheme, not `redis://`. Both are already reflected
+  in `.env.production.example`.
+
 ## Database roles
 
 Two roles, and the split is load-bearing:

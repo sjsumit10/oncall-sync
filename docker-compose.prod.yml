@@ -1,0 +1,55 @@
+# Production compose: api + worker only. Postgres is Supabase, Redis is
+# Upstash — both external, reached over the network via DATABASE_URL /
+# DATABASE_ADMIN_URL / REDIS_URL in .env.production. Nothing here starts a
+# database or cache; see docker-compose.yml for the local-dev shape that does.
+#
+# Usage on the VPS:
+#   docker compose -f docker-compose.prod.yml --env-file .env.production build
+#   docker compose -f docker-compose.prod.yml --env-file .env.production run --rm api python scripts/bootstrap_db.py
+#   docker compose -f docker-compose.prod.yml --env-file .env.production run --rm api alembic upgrade head
+#   docker compose -f docker-compose.prod.yml --env-file .env.production up -d
+#
+# TLS termination (api needs to be reachable over https from the S3/CloudFront
+# frontend) is deliberately not handled here — put a reverse proxy, ALB, or
+# CloudFront-in-front-of-the-API ahead of the published API_PORT.
+
+services:
+  api:
+    build:
+      context: ./backend
+      target: prod
+    image: oncall-sync-api:latest
+    restart: unless-stopped
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    env_file: [.env.production]
+    ports: ["${API_PORT:-8000}:8000"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+  worker:
+    build:
+      context: ./backend
+      target: prod
+    image: oncall-sync-worker:latest
+    restart: unless-stopped
+    command: arq app.worker.arq_app.WorkerSettings
+    env_file: [.env.production]
+    # Prometheus scrape target: the worker does the reconciling, so its
+    # counters are the ones that matter.
+    ports: ["${WORKER_METRICS_PORT:-9100}:9100"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:9100/', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
