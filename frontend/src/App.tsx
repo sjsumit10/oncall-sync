@@ -5,6 +5,7 @@ import { RequireAuth } from "@/components/RequireAuth";
 import AcceptInvite from "@/routes/AcceptInvite";
 import Activity from "@/routes/Activity";
 import Connections from "@/routes/Connections";
+import Docs from "@/routes/Docs";
 import ForgotPassword from "@/routes/ForgotPassword";
 import Identities from "@/routes/Identities";
 import Landing from "@/routes/Landing";
@@ -40,6 +41,7 @@ export default function App() {
         <Route path="/rules/:ruleId/edit" element={<RuleBuilder />} />
         <Route path="/identities" element={<Identities />} />
         <Route path="/plans" element={<Plans />} />
+        <Route path="/docs" element={<Docs />} />
         <Route path="/activity" element={<Activity />} />
         <Route path="/settings" element={<Settings />} />
       </Route>

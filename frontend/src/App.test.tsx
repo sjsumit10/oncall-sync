@@ -103,4 +103,26 @@ describe("routing", () => {
     expect(await screen.findByRole("link", { name: "Dashboard" })).toBeDefined();
     expect(screen.queryByRole("link", { name: "Log in" })).toBeNull();
   });
+
+  it("shows the docs page, linked from the sidebar, for an authenticated visitor", async () => {
+    stubSession(200, {
+      user: {
+        id: "u1",
+        email: "ada@acme.dev",
+        name: "Ada Lovelace",
+        role: "owner",
+        is_active: true,
+        created_at: new Date().toISOString(),
+      },
+      organization: { id: "o1", name: "Acme", slug: "acme" },
+      csrf_token: "token",
+    });
+    renderAt("/docs");
+
+    expect(await screen.findByRole("heading", { name: "Docs", level: 1 })).toBeDefined();
+    expect(screen.getByRole("link", { name: "Docs" })).toBeDefined();
+    expect(screen.getByRole("heading", { name: /Connect an on-call provider/ })).toBeDefined();
+    expect(screen.getByRole("heading", { name: /Connect a chat provider/ })).toBeDefined();
+    expect(screen.getByRole("heading", { name: /Create a sync rule/ })).toBeDefined();
+  });
 });
