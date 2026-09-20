@@ -68,6 +68,23 @@ describe("routing", () => {
     expect(screen.getByRole("link", { name: "Sign Up" })).toBeDefined();
   });
 
+  it("links from login to the forgot-password page", async () => {
+    stubSession(401, { detail: "Not authenticated" });
+    renderAt("/login");
+
+    const link = await screen.findByRole("link", { name: "Forgot password?" });
+    expect((link as HTMLAnchorElement).getAttribute("href")).toBe("/forgot-password");
+  });
+
+  it("shows the forgot-password and reset-password pages without a session", async () => {
+    stubSession(401, { detail: "Not authenticated" });
+    renderAt("/forgot-password");
+    expect(await screen.findByRole("heading", { name: "Reset your password" })).toBeDefined();
+
+    renderAt("/reset-password?token=abc");
+    expect(await screen.findByRole("heading", { name: "Set a new password" })).toBeDefined();
+  });
+
   it("offers a dashboard link on the landing page for an authenticated visitor", async () => {
     stubSession(200, {
       user: {

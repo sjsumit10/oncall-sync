@@ -1,19 +1,26 @@
-"""Signup, login, logout, session introspection and invite acceptance."""
+"""Signup, login, logout, session introspection, invite acceptance and
+password reset."""
 
 import uuid
 
+import structlog
 from fastapi import APIRouter, Request, Response, status
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import select
 
 from app.api.v1.schemas import OrganizationOut, Password, SessionOut, UserOut
+from app.config import get_settings
 from app.core import ratelimit
 from app.core.cookies import clear_auth_cookies, set_auth_cookies
 from app.core.deps import CurrentUser, DbSession, RedisClient
-from app.core.errors import TooManyRequests, Unauthorized
-from app.core.sessions import SESSION_COOKIE, create_session, delete_session
-from app.db.models import Organization
-from app.services import accounts
+from app.core.errors import BadRequest, TooManyRequests, Unauthorized
+from app.core.security import hash_password
+from app.core.sessions import SESSION_COOKIE, create_session, delete_session, delete_user_sessions
+from app.db.models import Organization, User
+from app.services import accounts, password_reset
+from app.services.email import EmailNotConfigured, send_email
+
+log = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -25,6 +32,11 @@ LOGIN_WINDOW_SECONDS = 900
 #: account/org creation attempt, not someone retrying a mistyped password.
 SIGNUP_ATTEMPT_LIMIT = 5
 SIGNUP_WINDOW_SECONDS = 900
+
+#: Requesting a reset sends an email, so this is also an anti-mail-bombing
+#: limit, not just an abuse-prevention one.
+PASSWORD_RESET_REQUEST_LIMIT = 5
+PASSWORD_RESET_WINDOW_SECONDS = 900
 
 
 async def _throttle(redis: RedisClient, *keys: str, limit: int, window_seconds: int) -> None:
@@ -48,6 +60,15 @@ class LoginIn(BaseModel):
 class AcceptInviteIn(BaseModel):
     token: str = Field(min_length=16, max_length=256)
     name: str = Field(min_length=1, max_length=120)
+    password: Password
+
+
+class PasswordResetRequestIn(BaseModel):
+    email: EmailStr
+
+
+class PasswordResetConfirmIn(BaseModel):
+    token: str = Field(min_length=16, max_length=256)
     password: Password
 
 
@@ -129,6 +150,82 @@ async def accept_invite(
     org = await db.scalar(select(Organization).where(Organization.id == user.org_id))
     assert org is not None
     await db.commit()
+
+    csrf_token = await _start_session(response, redis, user.id, user.org_id)
+    return SessionOut(
+        user=UserOut.model_validate(user),
+        organization=OrganizationOut.model_validate(org),
+        csrf_token=csrf_token,
+    )
+
+
+@router.post("/password-reset/request", status_code=status.HTTP_204_NO_CONTENT)
+async def request_password_reset(
+    payload: PasswordResetRequestIn, request: Request, db: DbSession, redis: RedisClient
+) -> None:
+    """Always answers the same way, whether or not the email is registered.
+
+    A response that differed here would let an attacker enumerate accounts by
+    address — the entire reason to check "does this email exist" is exactly
+    what this endpoint must never reveal.
+    """
+    client = request.client.host if request.client else "unknown"
+    await _throttle(
+        redis,
+        f"password-reset:email:{payload.email.lower()}",
+        f"password-reset:ip:{client}",
+        limit=PASSWORD_RESET_REQUEST_LIMIT,
+        window_seconds=PASSWORD_RESET_WINDOW_SECONDS,
+    )
+
+    email = accounts.normalize_email(payload.email)
+    user = await db.scalar(select(User).where(User.email == email))
+    if user is not None and user.is_active:
+        token = await password_reset.issue(redis, user_id=user.id)
+        link = f"{get_settings().web_base_url}/reset-password?token={token}"
+        try:
+            await send_email(
+                to=user.email,
+                subject="Reset your On-Call Sync password",
+                body=(
+                    "Someone requested a password reset for this account.\n\n"
+                    f"Reset it within 5 minutes: {link}\n\n"
+                    "If you didn't request this, you can safely ignore this email — "
+                    "your password will not change."
+                ),
+            )
+        except EmailNotConfigured:
+            log.error("password_reset.email_not_configured", user_id=str(user.id))
+        except Exception:
+            # Logged, not raised: the response must look identical to the
+            # "no such account" case regardless of an SMTP-side failure.
+            log.exception("password_reset.email_failed", user_id=str(user.id))
+    return None
+
+
+@router.post("/password-reset/confirm", response_model=SessionOut)
+async def confirm_password_reset(
+    payload: PasswordResetConfirmIn, response: Response, db: DbSession, redis: RedisClient
+) -> SessionOut:
+    reset = await password_reset.consume(redis, payload.token)
+    if reset is None:
+        raise BadRequest("This link has expired or already been used. Request a new one.")
+
+    user = await db.get(User, uuid.UUID(reset.user_id))
+    if user is None or not user.is_active:
+        raise BadRequest("This link has expired or already been used. Request a new one.")
+
+    user.password_hash = hash_password(payload.password)
+    await db.commit()
+
+    # A session open on a stolen or shared device must not survive a reset —
+    # this is the one moment a compromised account can be reliably locked back
+    # down, so every existing session goes, including the one that started
+    # this request from another tab.
+    await delete_user_sessions(redis, user.id)
+
+    org = await db.scalar(select(Organization).where(Organization.id == user.org_id))
+    assert org is not None
 
     csrf_token = await _start_session(response, redis, user.id, user.org_id)
     return SessionOut(

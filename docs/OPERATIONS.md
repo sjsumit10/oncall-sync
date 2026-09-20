@@ -49,6 +49,28 @@ undecryptable and every connection has to be re-established. Back it up
 separately from the database — holding both in one place defeats the point of
 wrapping the keys at all.
 
+### Outbound email (password reset)
+
+```
+SMTP_HOST               Empty disables sending — see below.
+SMTP_PORT               587 for STARTTLS (most providers), 465 for implicit TLS.
+SMTP_USERNAME
+SMTP_PASSWORD
+SMTP_USE_TLS=false      true only for a port-465, implicit-TLS provider.
+SMTP_FROM_EMAIL
+SMTP_FROM_NAME=On-Call Sync
+```
+
+`POST /api/v1/auth/password-reset/request` always answers the same way
+whether or not the address is registered — that is the point, since a
+different response would let an attacker enumerate accounts. With
+`SMTP_HOST` unset the endpoint still answers normally; it logs
+`password_reset.email_not_configured` and sends nothing, so this fails loud
+in the logs rather than silently pretending to work. The reset link itself
+is only valid for 5 minutes, held in Redis — losing Redis invalidates every
+outstanding reset link, which is a fine trade for a bearer credential mailed
+in plain text.
+
 ## Monitoring
 
 Scrape **two** targets: the API at `/metrics`, and each worker at

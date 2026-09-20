@@ -39,14 +39,22 @@ export default function Login() {
           value={email}
           onChange={(e) => setEmail(e.target.value)}
         />
-        <Field
-          label="Password"
-          type="password"
-          autoComplete="current-password"
-          required
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-        />
+        <div className="space-y-1.5">
+          <Field
+            label="Password"
+            type="password"
+            autoComplete="current-password"
+            required
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+          />
+          <Link
+            to="/forgot-password"
+            className="block text-right text-xs font-medium text-primary underline-offset-4 hover:underline"
+          >
+            Forgot password?
+          </Link>
+        </div>
         {login.error && <Alert>{errorMessage(login.error)}</Alert>}
         <Button type="submit" className="w-full" size="lg" disabled={login.isPending}>
           {login.isPending ? "Signing in…" : "Sign in"}

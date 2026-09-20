@@ -46,6 +46,17 @@ export const useLogin = () => useSessionMutation<{ email: string; password: stri
 export const useAcceptInvite = () =>
   useSessionMutation<{ token: string; name: string; password: string }>("/auth/invites/accept");
 
+/** Always resolves — the API answers identically whether or not the email is registered. */
+export function useRequestPasswordReset() {
+  return useMutation({
+    mutationFn: (input: { email: string }) =>
+      api.post<void>("/auth/password-reset/request", input),
+  });
+}
+
+export const useConfirmPasswordReset = () =>
+  useSessionMutation<{ token: string; password: string }>("/auth/password-reset/confirm");
+
 export function useLogout() {
   const queryClient = useQueryClient();
   return useMutation({

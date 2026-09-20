@@ -72,6 +72,19 @@ class Settings(BaseSettings):
 
     sentry_dsn: str = ""
 
+    # Outbound email (password reset today; anything else later reuses this).
+    # Empty smtp_host means unconfigured — send_email() refuses rather than
+    # pretending to have sent something, the same choice credential_kek makes.
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_username: str = ""
+    smtp_password: SecretStr = SecretStr("")
+    #: True for implicit TLS (typically port 465). Leave false for STARTTLS on
+    #: 587, which is negotiated automatically and is what most providers want.
+    smtp_use_tls: bool = False
+    smtp_from_email: str = ""
+    smtp_from_name: str = "On-Call Sync"
+
     @property
     def admin_database_url(self) -> PostgresDsn:
         return self.database_admin_url or self.database_url
