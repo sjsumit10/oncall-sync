@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -188,5 +189,86 @@ describe("Connections — Slack", () => {
 
     expect(await screen.findByText("Reconnect required")).toBeDefined();
     expect(screen.getByText(/reinstall required/)).toBeDefined();
+  });
+});
+
+describe("Connections — Slack channels", () => {
+  const WORKSPACE = {
+    id: "w1",
+    kind: "slack",
+    external_team_id: "T123",
+    team_name: "Acme Workspace",
+    status: "active",
+    scopes: null,
+    has_user_token: true,
+    external_resource_id: null,
+    last_verified_at: null,
+    last_error: null,
+    groups_synced_at: null,
+    created_at: new Date().toISOString(),
+  };
+
+  // Path-precise (endsWith) matching, unlike the file's shared `stubApi`
+  // (substring match) — needed here because "/chat/connections" is itself a
+  // substring of "/chat/connections/w1/channels", which the shared helper
+  // would otherwise match first.
+  function stubPreciseApi(routes: Record<string, unknown>) {
+    const calls: { url: string }[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        calls.push({ url });
+        const path = url.split("?")[0];
+        const match = Object.keys(routes).find((route) => path.endsWith(route));
+        return new Response(JSON.stringify(match ? routes[match] : []), { status: 200 });
+      }),
+    );
+    return calls;
+  }
+
+  it("shows whether the bot has joined each cached channel", async () => {
+    stubPreciseApi({
+      "/auth/me": SESSION,
+      "/oncall/providers": [PAGERDUTY],
+      "/oncall/connections": [],
+      "/chat/providers": [SLACK],
+      "/chat/connections": [WORKSPACE],
+      "/channels": [
+        { id: "ch1", external_id: "C1", name: "ops", is_private: false, bot_is_member: true },
+        { id: "ch2", external_id: "C2", name: "random", is_private: false, bot_is_member: false },
+      ],
+    });
+    renderPage();
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole("button", { name: "Channels" }));
+
+    expect(await screen.findByText("#ops")).toBeDefined();
+    expect(screen.getByText("#random")).toBeDefined();
+    expect(screen.getByText("Bot has joined")).toBeDefined();
+    expect(screen.getByText("Bot not in channel")).toBeDefined();
+  });
+
+  it("refreshes the channel list on request", async () => {
+    const calls = stubPreciseApi({
+      "/auth/me": SESSION,
+      "/oncall/providers": [PAGERDUTY],
+      "/oncall/connections": [],
+      "/chat/providers": [SLACK],
+      "/chat/connections": [WORKSPACE],
+      "/channels": [
+        { id: "ch1", external_id: "C1", name: "ops", is_private: false, bot_is_member: false },
+      ],
+    });
+    renderPage();
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole("button", { name: "Channels" }));
+    await screen.findByText("#ops");
+    await user.click(await screen.findByRole("button", { name: "Refresh" }));
+
+    await waitFor(() =>
+      expect(calls.some((c) => c.url.includes("/channels?refresh=true"))).toBe(true),
+    );
   });
 });

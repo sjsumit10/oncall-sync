@@ -3,6 +3,7 @@ import { AlertTriangle, RefreshCw, Unplug } from "lucide-react";
 import { useState } from "react";
 
 import { Alert } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -15,6 +16,7 @@ import {
 import { api } from "@/lib/api";
 import type {
   AvailableTeam,
+  ChatChannel,
   ChatConnection,
   ChatGroup,
   ChatProvider,
@@ -62,6 +64,7 @@ function WorkspaceCard({
 }) {
   const queryClient = useQueryClient();
   const [showGroups, setShowGroups] = useState(false);
+  const [showChannels, setShowChannels] = useState(false);
 
   const verify = useMutation({
     mutationFn: () => api.post<ConnectionHealth>(`/chat/connections/${connection.id}/verify`),
@@ -88,6 +91,9 @@ function WorkspaceCard({
           <div className="ml-auto flex gap-2">
             <Button variant="outline" size="sm" onClick={() => setShowGroups((open) => !open)}>
               {showGroups ? "Hide groups" : "User groups"}
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setShowChannels((open) => !open)}>
+              {showChannels ? "Hide channels" : "Channels"}
             </Button>
             {canManage && (
               <>
@@ -132,7 +138,10 @@ function WorkspaceCard({
         {connection.kind === "teams" && !connection.external_resource_id ? (
           <SelectTeam connectionId={connection.id} />
         ) : (
-          showGroups && <Groups connectionId={connection.id} kind={connection.kind} />
+          <>
+            {showGroups && <Groups connectionId={connection.id} kind={connection.kind} />}
+            {showChannels && <Channels connectionId={connection.id} />}
+          </>
         )}
       </CardContent>
     </Card>
@@ -229,6 +238,63 @@ function Groups({ connectionId, kind }: { connectionId: string; kind: string }) 
           <li key={group.id} className="flex items-center gap-3 py-2">
             <code className="text-sm text-foreground">@{group.handle}</code>
             <span className="text-sm text-muted-foreground">{group.name}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function Channels({ connectionId }: { connectionId: string }) {
+  const queryClient = useQueryClient();
+  const key = ["chat-channels", connectionId];
+
+  const channels = useQuery({
+    queryKey: key,
+    queryFn: () => api.get<ChatChannel[]>(`/chat/connections/${connectionId}/channels`),
+  });
+  const refresh = useMutation({
+    mutationFn: () =>
+      api.get<ChatChannel[]>(`/chat/connections/${connectionId}/channels?refresh=true`),
+    onSuccess: (data) => queryClient.setQueryData(key, data),
+  });
+
+  return (
+    <div className="mt-4 border-t border-border pt-4">
+      <div className="mb-2 flex items-center gap-3">
+        <span className="text-sm font-medium text-foreground">
+          Channels {channels.data && `(${channels.data.length})`}
+        </span>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="ml-auto"
+          onClick={() => refresh.mutate()}
+          disabled={refresh.isPending}
+        >
+          <RefreshCw className={`size-3.5 ${refresh.isPending ? "animate-spin" : ""}`} />
+          {refresh.isPending ? "Refreshing…" : "Refresh"}
+        </Button>
+      </div>
+      <p className="mb-2 text-xs text-muted-foreground">
+        Only a channel the bot has joined can receive handoff announcements. Invite it in Slack
+        (<code className="text-foreground">/invite @your-bot</code>), then refresh here — this
+        list only updates when you ask it to.
+      </p>
+      {channels.error && <Alert>{errorMessage(channels.error)}</Alert>}
+      {refresh.error && <Alert>{errorMessage(refresh.error)}</Alert>}
+      {channels.data?.length === 0 && (
+        <p className="text-sm text-muted-foreground">
+          No channels cached yet. Refresh to fetch them.
+        </p>
+      )}
+      <ul className="divide-y divide-border">
+        {channels.data?.map((channel) => (
+          <li key={channel.id} className="flex items-center gap-3 py-2">
+            <code className="text-sm text-foreground">#{channel.name}</code>
+            <Badge variant={channel.bot_is_member ? "success" : "secondary"} className="ml-auto">
+              {channel.bot_is_member ? "Bot has joined" : "Bot not in channel"}
+            </Badge>
           </li>
         ))}
       </ul>
