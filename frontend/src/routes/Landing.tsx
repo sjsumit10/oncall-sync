@@ -17,7 +17,7 @@ const FEATURES = [
     icon: RefreshCw,
     title: "Always up to date",
     description:
-      "The moment a PagerDuty shift hands off, the Slack or Teams group updates with it — no cron job to babysit, no stale handle.",
+      "The moment a PagerDuty shift hands off, the Slack group updates with it — no cron job to babysit, no stale handle.",
   },
   {
     icon: MessageSquare,
@@ -39,8 +39,8 @@ const STEPS = [
     description: "Authorize once. Your schedules are read automatically from then on.",
   },
   {
-    title: "Connect Slack or Teams",
-    description: "Approve the app and pick the group, tag, or channel to keep in sync.",
+    title: "Connect Slack",
+    description: "Approve the app and pick the group and channel to keep in sync.",
   },
   {
     title: "Create a sync rule",
@@ -48,7 +48,7 @@ const STEPS = [
   },
 ];
 
-const INTEGRATIONS = ["PagerDuty", "Slack", "Microsoft Teams"];
+const INTEGRATIONS = ["PagerDuty", "Slack"];
 
 export default function Landing() {
   const { data: session } = useSession();
@@ -97,15 +97,15 @@ export default function Landing() {
           <div className="relative mx-auto max-w-3xl px-6 py-24 text-center sm:py-32">
             <div className="mx-auto mb-6 inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1 text-xs font-medium text-muted-foreground shadow-sm">
               <Link2 className="size-3.5 text-primary" />
-              PagerDuty &harr; Slack &amp; Microsoft Teams
+              PagerDuty &harr; Slack
             </div>
             <h1 className="text-4xl font-semibold tracking-tight text-foreground sm:text-5xl">
               Whoever is on call is always{" "}
               <span className="text-primary">one mention away</span>
             </h1>
             <p className="mx-auto mt-5 max-w-xl text-lg text-muted-foreground">
-              On-Call Sync keeps your Slack or Teams group mapped to the right PagerDuty
-              schedule, automatically, so a handoff never leaves anyone in the dark.
+              On-Call Sync keeps your Slack group mapped to the right PagerDuty schedule,
+              automatically, so a handoff never leaves anyone in the dark.
             </p>
             <div className="mt-8 flex items-center justify-center gap-3">
               <Button asChild size="lg">
