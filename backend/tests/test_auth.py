@@ -36,6 +36,19 @@ async def test_signup_rejects_duplicate_email(client: AsyncClient) -> None:
     assert response.status_code == 409
 
 
+async def test_signup_is_rate_limited(client: AsyncClient) -> None:
+    await signup(client)  # 1st attempt, succeeds and starts a session
+    response = None
+    for _ in range(5):  # 5 more: still under SIGNUP_ATTEMPT_LIMIT (5) until the last
+        response = await client.post(
+            "/api/v1/auth/signup",
+            json={"name": "Bob", "email": "owner@acme.dev", "password": "correct-horse-battery"},
+            headers=csrf(client),
+        )
+    assert response is not None
+    assert response.status_code == 429
+
+
 async def test_signup_rejects_short_password(client: AsyncClient) -> None:
     response = await client.post(
         "/api/v1/auth/signup",
@@ -69,6 +82,23 @@ async def test_login_rejects_wrong_password(client: AsyncClient) -> None:
         headers=csrf(client),
     )
     assert response.status_code == 401
+
+
+async def test_login_is_rate_limited(client: AsyncClient) -> None:
+    await signup(client)
+    response = None
+    for _ in range(11):  # LOGIN_ATTEMPT_LIMIT is 10
+        response = await client.post(
+            "/api/v1/auth/login",
+            json={"email": "owner@acme.dev", "password": "not-the-password"},
+            headers=csrf(client),
+        )
+    assert response is not None
+    assert response.status_code == 401
+    # Distinct from a wrong-password 401 — same status code (so a client
+    # can't distinguish "wrong password" from "rate limited" from the status
+    # alone), but the message says which actually happened.
+    assert "too many attempts" in response.json()["detail"].lower()
 
 
 async def test_logout_revokes_the_session_server_side(client: AsyncClient) -> None:
