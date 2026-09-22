@@ -138,6 +138,17 @@ async def test_confirm_rejects_an_unknown_token(client: AsyncClient) -> None:
     assert response.status_code == 400
 
 
+async def test_confirm_is_rate_limited(client: AsyncClient) -> None:
+    # Bogus tokens are enough — the IP throttle is checked before a token is
+    # even looked up, so this never gets past a 400 until the limit trips.
+    for _ in range(6):
+        response = await client.post(
+            f"{RESET}/confirm",
+            json={"token": "not-a-real-token-not-a-real-token", "password": "x" * 12},
+        )
+    assert response.status_code == 429
+
+
 async def test_confirm_rejects_a_reused_token(
     client: AsyncClient, invitee: AsyncClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:

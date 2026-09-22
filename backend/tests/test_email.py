@@ -4,6 +4,7 @@ correctly when it is."""
 from typing import Any
 
 import aiosmtplib
+import certifi
 import pytest
 from pydantic import SecretStr
 
@@ -53,6 +54,7 @@ async def test_sends_a_correctly_addressed_message(monkeypatch: pytest.MonkeyPat
     assert call["port"] == 587
     assert call["username"] == "apikey"
     assert call["password"] == "secret"
+    assert call["cert_bundle"] == certifi.where()
 
     message = call["message"]
     assert message["To"] == "ada@acme.dev"

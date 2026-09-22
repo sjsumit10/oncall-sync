@@ -34,9 +34,17 @@ SIGNUP_ATTEMPT_LIMIT = 5
 SIGNUP_WINDOW_SECONDS = 900
 
 #: Requesting a reset sends an email, so this is also an anti-mail-bombing
-#: limit, not just an abuse-prevention one.
+#: limit, not just an abuse-prevention one. Tighter window than login/signup
+#: since a reset link is only valid for 5 minutes anyway — a real user has no
+#: reason to ask for one 5 times in 2 minutes.
 PASSWORD_RESET_REQUEST_LIMIT = 5
-PASSWORD_RESET_WINDOW_SECONDS = 900
+PASSWORD_RESET_WINDOW_SECONDS = 120
+
+#: Guards token brute-forcing. Per IP always; per email too once a token
+#: resolves to one, so repeated confirm attempts against the same account
+#: are capped even across different (stolen or guessed) tokens.
+PASSWORD_RESET_CONFIRM_LIMIT = 5
+PASSWORD_RESET_CONFIRM_WINDOW_SECONDS = 120
 
 
 async def _throttle(redis: RedisClient, *keys: str, limit: int, window_seconds: int) -> None:
@@ -205,8 +213,20 @@ async def request_password_reset(
 
 @router.post("/password-reset/confirm", response_model=SessionOut)
 async def confirm_password_reset(
-    payload: PasswordResetConfirmIn, response: Response, db: DbSession, redis: RedisClient
+    payload: PasswordResetConfirmIn,
+    request: Request,
+    response: Response,
+    db: DbSession,
+    redis: RedisClient,
 ) -> SessionOut:
+    client = request.client.host if request.client else "unknown"
+    await _throttle(
+        redis,
+        f"password-reset-confirm:ip:{client}",
+        limit=PASSWORD_RESET_CONFIRM_LIMIT,
+        window_seconds=PASSWORD_RESET_CONFIRM_WINDOW_SECONDS,
+    )
+
     reset = await password_reset.consume(redis, payload.token)
     if reset is None:
         raise BadRequest("This link has expired or already been used. Request a new one.")
@@ -214,6 +234,16 @@ async def confirm_password_reset(
     user = await db.get(User, uuid.UUID(reset.user_id))
     if user is None or not user.is_active:
         raise BadRequest("This link has expired or already been used. Request a new one.")
+
+    # Only knowable once the token resolves to an account — caps repeated
+    # confirm attempts against the same user across different tokens, on top
+    # of the IP limit above.
+    await _throttle(
+        redis,
+        f"password-reset-confirm:email:{user.email.lower()}",
+        limit=PASSWORD_RESET_CONFIRM_LIMIT,
+        window_seconds=PASSWORD_RESET_CONFIRM_WINDOW_SECONDS,
+    )
 
     user.password_hash = hash_password(payload.password)
     await db.commit()
