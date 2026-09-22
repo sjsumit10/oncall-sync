@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -102,6 +103,75 @@ describe("Rules", () => {
     expect(await screen.findByText("DevOps on-call")).toBeDefined();
     expect(await screen.findByText("@devops-on-call")).toBeDefined();
     expect(await screen.findByText("← Primary")).toBeDefined();
+  });
+
+  it("asks for confirmation before deleting a rule, and only calls the backend once confirmed", async () => {
+    const calls: { method: string; url: string }[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        calls.push({ method: init?.method ?? "GET", url });
+        const path = url.split("?")[0];
+        const routes: Record<string, unknown> = {
+          "/auth/me": SESSION,
+          "/oncall/connections": [{ id: "oc1", kind: "pagerduty" }],
+          "/chat/connections": [{ id: "cc1", kind: "slack" }],
+          "/rules": [RULE],
+          "/schedules": [{ external_id: "PSCHED1", name: "Primary", timezone: "UTC" }],
+          "/groups": [{ external_id: "S_DEVOPS", handle: "devops-on-call", name: "DevOps" }],
+        };
+        const match = Object.keys(routes).find((route) => path.endsWith(route));
+        return new Response(JSON.stringify(match ? routes[match] : []), { status: 200 });
+      }),
+    );
+
+    renderWith(<Rules />);
+    const user = userEvent.setup();
+
+    await screen.findByText("DevOps on-call");
+    await user.click(screen.getByRole("button", { name: /Delete/ }));
+
+    expect(await screen.findByRole("alertdialog")).toBeDefined();
+    expect(calls.some((c) => c.method === "DELETE")).toBe(false);
+
+    await user.click(screen.getByRole("button", { name: "Delete rule" }));
+
+    await waitFor(() => {
+      expect(calls.some((c) => c.method === "DELETE" && c.url.endsWith("/rules/r1"))).toBe(true);
+    });
+  });
+
+  it("cancels without calling the backend", async () => {
+    const calls: { method: string; url: string }[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        calls.push({ method: init?.method ?? "GET", url });
+        const path = url.split("?")[0];
+        const routes: Record<string, unknown> = {
+          "/auth/me": SESSION,
+          "/oncall/connections": [{ id: "oc1", kind: "pagerduty" }],
+          "/chat/connections": [{ id: "cc1", kind: "slack" }],
+          "/rules": [RULE],
+          "/schedules": [{ external_id: "PSCHED1", name: "Primary", timezone: "UTC" }],
+          "/groups": [{ external_id: "S_DEVOPS", handle: "devops-on-call", name: "DevOps" }],
+        };
+        const match = Object.keys(routes).find((route) => path.endsWith(route));
+        return new Response(JSON.stringify(match ? routes[match] : []), { status: 200 });
+      }),
+    );
+
+    renderWith(<Rules />);
+    const user = userEvent.setup();
+
+    await screen.findByText("DevOps on-call");
+    await user.click(screen.getByRole("button", { name: /Delete/ }));
+    await screen.findByRole("alertdialog");
+
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    expect(calls.some((c) => c.method === "DELETE")).toBe(false);
   });
 });
 

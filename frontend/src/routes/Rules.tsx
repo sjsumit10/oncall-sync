@@ -5,6 +5,17 @@ import { Link } from "react-router-dom";
 
 import { EmptyState } from "@/components/page";
 import { Alert } from "@/components/ui/alert";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Badge, type BadgeProps } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -166,15 +177,30 @@ function RuleCard({ rule, canManage }: { rule: SyncRule; canManage: boolean }) {
                   {rule.enabled ? <Pause className="size-4" /> : <Play className="size-4" />}
                   {rule.enabled ? "Pause" : "Resume"}
                 </Button>
-                <Button
-                  variant="destructive-outline"
-                  size="sm"
-                  onClick={() => remove.mutate()}
-                  disabled={remove.isPending}
-                >
-                  <Trash2 className="size-4" />
-                  Delete
-                </Button>
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button variant="destructive-outline" size="sm" disabled={remove.isPending}>
+                      <Trash2 className="size-4" />
+                      Delete
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Delete this rule?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        This stops syncing <strong>{rule.name}</strong>. The handle it manages
+                        keeps whoever was last synced to it — it won't be cleaned up. This can't
+                        be undone.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                      <AlertDialogAction onClick={() => remove.mutate()}>
+                        Delete rule
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
               </>
             )}
           </div>
