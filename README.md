@@ -314,3 +314,10 @@ shows the API-key path alone. Set `PAGERDUTY_CLIENT_ID` and
 ```
 
 Scopes requested are read-only: `schedules.read`, `oncalls.read`, `users.read`.
+
+## License
+
+Licensed under the [GNU Affero General Public License v3.0](LICENSE.md). In
+short: you can self-host, modify and redistribute this freely, but if you run
+a modified version as a network service, you must make the Corresponding
+Source available to its users.
