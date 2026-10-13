@@ -418,10 +418,10 @@ async def test_open_license_mode_lifts_the_plan_limit(
         assert response.status_code == 201, response.text
 
 
-@respx.mock
 async def test_open_license_mode_disables_the_plan_endpoints(
     client: AsyncClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    await signup(client)
     monkeypatch.setattr(get_settings(), "license_mode", "open")
 
     assert (await client.get("/api/v1/org/plan")).status_code == 404

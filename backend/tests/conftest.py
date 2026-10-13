@@ -50,6 +50,13 @@ def migrated_database() -> Iterator[None]:
 
 
 @pytest.fixture(autouse=True)
+def _default_license_mode(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Pins the default license mode regardless of the developer's local .env,
+    so plan-quota tests don't silently change behavior based on it."""
+    monkeypatch.setattr(get_settings(), "license_mode", "closed")
+
+
+@pytest.fixture(autouse=True)
 async def clean_state() -> AsyncIterator[None]:
     set_current_org(None)
     async with admin_engine.begin() as conn:
