@@ -1,7 +1,9 @@
 """Signup, login, session lifetime and CSRF."""
 
+import pytest
 from httpx import AsyncClient
 
+from app.config import get_settings
 from app.core.sessions import SESSION_COOKIE
 from tests.conftest import csrf, signup
 
@@ -20,6 +22,17 @@ async def test_signup_creates_org_with_owner(client: AsyncClient) -> None:
     me = await client.get("/api/v1/auth/me")
     assert me.status_code == 200
     assert me.json()["user"]["id"] == body["user"]["id"]
+
+
+async def test_session_reports_plans_enabled_from_license_mode(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    body = await signup(client)
+    assert body["plans_enabled"] is True
+
+    monkeypatch.setattr(get_settings(), "license_mode", "open")
+    me = await client.get("/api/v1/auth/me")
+    assert me.json()["plans_enabled"] is False
 
 
 async def test_signup_rejects_duplicate_email(client: AsyncClient) -> None:

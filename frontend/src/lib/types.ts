@@ -39,6 +39,8 @@ export interface Session {
   user: User;
   organization: Organization;
   csrf_token: string;
+  /** False under license_mode "open" — the Plans page is hidden entirely. */
+  plans_enabled: boolean;
 }
 
 export interface Invite {

@@ -51,6 +51,8 @@ class SessionOut(BaseModel):
     user: UserOut
     organization: OrganizationOut
     csrf_token: str
+    #: False under license_mode "open" — the SPA hides the Plans page entirely.
+    plans_enabled: bool
 
 
 class InviteOut(BaseModel):

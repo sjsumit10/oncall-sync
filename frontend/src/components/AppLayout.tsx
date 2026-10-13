@@ -21,6 +21,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useLogout, useSession } from "@/lib/auth";
+import type { Session } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 const NAV = [
@@ -29,7 +30,13 @@ const NAV = [
   { to: "/activity", label: "Activity", end: false, icon: ActivityIcon },
   { to: "/connections", label: "Connections", end: false, icon: Plug },
   { to: "/identities", label: "Identities", end: false, icon: Users },
-  { to: "/plans", label: "Plans", end: false, icon: CreditCard },
+  {
+    to: "/plans",
+    label: "Plans",
+    end: false,
+    icon: CreditCard,
+    hidden: (session: Session | null | undefined) => session?.plans_enabled === false,
+  },
   { to: "/docs", label: "Docs", end: false, icon: BookOpen },
   { to: "/settings", label: "Settings", end: false, icon: SettingsIcon },
 ];
@@ -62,7 +69,7 @@ function Sidebar() {
       </div>
 
       <nav className="flex-1 space-y-0.5 px-3 py-2">
-        {NAV.map((item) => (
+        {NAV.filter((item) => !item.hidden?.(session)).map((item) => (
           <NavLink
             key={item.to}
             to={item.to}

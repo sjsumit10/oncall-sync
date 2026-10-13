@@ -402,6 +402,35 @@ async def test_plan_cannot_be_downgraded_below_current_rule_count(client: AsyncC
 
 
 @respx.mock
+async def test_open_license_mode_lifts_the_plan_limit(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(get_settings(), "license_mode", "open")
+    ids = await connected_org(client)
+    await seed_groups(client, ids["chat_connection_id"], 6)
+
+    for i in range(6):
+        response = await client.post(
+            RULES,
+            json=rule_payload(ids, name=f"Rule {i}", group_external_id=f"S_G{i}"),
+            headers=csrf(client),
+        )
+        assert response.status_code == 201, response.text
+
+
+@respx.mock
+async def test_open_license_mode_disables_the_plan_endpoints(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(get_settings(), "license_mode", "open")
+
+    assert (await client.get("/api/v1/org/plan")).status_code == 404
+    assert (
+        await client.patch("/api/v1/org/plan", json={"plan": "starter"}, headers=csrf(client))
+    ).status_code == 404
+
+
+@respx.mock
 async def test_get_plan_reports_usage_and_available_tiers(client: AsyncClient) -> None:
     ids = await connected_org(client)
     await seed_groups(client, ids["chat_connection_id"], 1)

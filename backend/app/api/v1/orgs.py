@@ -90,8 +90,14 @@ def _plan_info(org: Organization, rule_count: int) -> PlanInfoOut:
     )
 
 
+def _assert_plans_enabled() -> None:
+    if not get_settings().plans_enabled:
+        raise NotFound("Plans are not available in this deployment")
+
+
 @router.get("/plan", response_model=PlanInfoOut)
 async def get_plan(user: CurrentUser, db: DbSession) -> PlanInfoOut:
+    _assert_plans_enabled()
     org = await db.get(Organization, user.org_id)
     if org is None:
         raise NotFound("Organization not found")
@@ -102,6 +108,7 @@ async def get_plan(user: CurrentUser, db: DbSession) -> PlanInfoOut:
 async def update_plan(
     payload: PlanUpdateIn, db: DbSession, actor: User = RequireOwner
 ) -> PlanInfoOut:
+    _assert_plans_enabled()
     org = await db.get(Organization, actor.org_id)
     if org is None:
         raise NotFound("Organization not found")

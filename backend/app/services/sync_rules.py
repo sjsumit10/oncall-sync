@@ -166,7 +166,14 @@ async def current_group_members(db: AsyncSession, rule: SyncRule) -> list[str]:
 
 
 async def assert_within_plan_limit(db: AsyncSession, org_id: uuid.UUID) -> None:
-    """Refuse a new rule once the org's plan quota is used up."""
+    """Refuse a new rule once the org's plan quota is used up.
+
+    No-op under license_mode "open": that deployment mode has no notion of a
+    paid plan, so nothing to enforce.
+    """
+    if not get_settings().plans_enabled:
+        return
+
     org = await db.get(Organization, org_id)
     if org is None:
         raise NotFound("Organization not found")

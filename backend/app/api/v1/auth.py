@@ -114,6 +114,7 @@ async def signup(
         user=UserOut.model_validate(owner),
         organization=OrganizationOut.model_validate(org),
         csrf_token=csrf_token,
+        plans_enabled=get_settings().plans_enabled,
     )
 
 
@@ -145,6 +146,7 @@ async def login(
         user=UserOut.model_validate(user),
         organization=OrganizationOut.model_validate(org),
         csrf_token=csrf_token,
+        plans_enabled=get_settings().plans_enabled,
     )
 
 
@@ -164,6 +166,7 @@ async def accept_invite(
         user=UserOut.model_validate(user),
         organization=OrganizationOut.model_validate(org),
         csrf_token=csrf_token,
+        plans_enabled=get_settings().plans_enabled,
     )
 
 
@@ -262,6 +265,7 @@ async def confirm_password_reset(
         user=UserOut.model_validate(user),
         organization=OrganizationOut.model_validate(org),
         csrf_token=csrf_token,
+        plans_enabled=get_settings().plans_enabled,
     )
 
 
@@ -281,4 +285,5 @@ async def me(request: Request, user: CurrentUser, db: DbSession) -> SessionOut:
         user=UserOut.model_validate(user),
         organization=OrganizationOut.model_validate(org),
         csrf_token=request.state.csrf_token,
+        plans_enabled=get_settings().plans_enabled,
     )

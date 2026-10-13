@@ -18,6 +18,10 @@ class Settings(BaseSettings):
 
     environment: Literal["local", "test", "staging", "production"] = "local"
     debug: bool = False
+    # "closed" (default) enforces plan-based sync rule quotas and exposes the
+    # Plans page. "open" lifts every plan restriction entirely — for
+    # self-hosted/open-source deployments that have no notion of a paid plan.
+    license_mode: Literal["open", "closed"] = "closed"
     app_base_url: str = "http://localhost:8000"
     web_base_url: str = "http://localhost:5173"
     # Where Slack/PagerDuty redirect the browser back to after an OAuth install.
@@ -92,6 +96,10 @@ class Settings(BaseSettings):
     @property
     def oauth_public_base_url(self) -> str:
         return self.oauth_callback_base_url or self.app_base_url
+
+    @property
+    def plans_enabled(self) -> bool:
+        return self.license_mode == "closed"
 
 
 @lru_cache
